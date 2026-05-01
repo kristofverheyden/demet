@@ -282,6 +282,68 @@
     align-items: start;
   }
 
+  .ai-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-mic {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    transition: all 0.15s;
+  }
+
+  .btn-mic:hover { background: var(--surface2); }
+
+  .btn-mic.recording {
+    background: #fdf0ee;
+    border-color: var(--danger);
+    color: var(--danger);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .btn-ai {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--accent);
+    background: var(--accent-light);
+    color: var(--accent-text);
+    transition: all 0.15s;
+  }
+
+  .btn-ai:hover { background: #c7efd0; }
+  .btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .spoken-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-top: 6px;
+    min-height: 16px;
+  }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+
   .student-select-row {
     margin-bottom: 1.25rem;
   }
@@ -407,6 +469,11 @@
     <div class="card">
       <div class="card-title">Inloggen met Google</div>
       <p class="card-sub">Verbind met je Google-account dat gekoppeld is aan Google Classroom als leraar.</p>
+
+      <div class="field">
+        <label>OpenAI API Key (voor AI-feedback)</label>
+        <input type="text" id="openaiKey" placeholder="sk-..." autocomplete="off">
+      </div>
 
       <label>Jouw Client ID</label>
       <div class="client-id-box">11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com</div>
@@ -658,6 +725,7 @@ function showStudent(index) {
   const firstName = name.split(' ')[0];
 
   const panel = document.getElementById('studentPanel');
+  const hasAI = !!document.getElementById('openaiKey')?.value.trim();
   panel.innerHTML = `
     <div class="student-header" style="margin-bottom:1rem">
       <div class="avatar">${initials}</div>
@@ -666,8 +734,14 @@ function showStudent(index) {
     </div>
     <div class="student-fields">
       <div>
-        <label>Notitie (persoonlijk)</label>
-        <textarea id="current-note" placeholder="Notities voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
+        <label>Feedback</label>
+        <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
+        ${!d.sent ? `
+        <div class="ai-row">
+          <button class="btn-mic" id="micBtn" onclick="toggleSpeech('${firstName}')">🎤 Inspreken</button>
+          <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" disabled>✨ Genereer</button>
+        </div>
+        <div class="spoken-text" id="spokenText"></div>` : ''}
       </div>
       <div>
         <label>Cijfer</label>
@@ -682,6 +756,109 @@ function showStudent(index) {
 
   const statusEl = document.getElementById('sendStatus');
   statusEl.className = 'status';
+}
+
+let recognition = null;
+let spokenTranscript = '';
+
+function toggleSpeech(firstName) {
+  const micBtn = document.getElementById('micBtn');
+  const aiBtn = document.getElementById('aiBtn');
+  const spokenEl = document.getElementById('spokenText');
+
+  if (recognition) {
+    recognition.stop();
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    spokenEl.textContent = 'Spraakherkenning niet ondersteund in deze browser. Gebruik Chrome of Edge.';
+    return;
+  }
+
+  recognition = new SR();
+  recognition.lang = 'nl-NL';
+  recognition.continuous = false;
+  recognition.interimResults = true;
+
+  micBtn.textContent = '⏹ Stop';
+  micBtn.classList.add('recording');
+  spokenEl.textContent = 'Luisteren...';
+
+  recognition.onresult = (e) => {
+    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+    spokenEl.textContent = transcript;
+    if (e.results[0].isFinal) spokenTranscript = transcript;
+  };
+
+  recognition.onend = () => {
+    recognition = null;
+    micBtn.textContent = '🎤 Inspreken';
+    micBtn.classList.remove('recording');
+    if (spokenTranscript) aiBtn.disabled = false;
+  };
+
+  recognition.onerror = (e) => {
+    recognition = null;
+    micBtn.textContent = '🎤 Inspreken';
+    micBtn.classList.remove('recording');
+    spokenEl.textContent = 'Fout bij spraakherkenning: ' + e.error;
+  };
+
+  recognition.start();
+}
+
+async function generateFeedback(studentName) {
+  const key = document.getElementById('openaiKey')?.value.trim();
+  if (!key) {
+    document.getElementById('spokenText').textContent = 'Vul eerst een OpenAI API key in bij stap 1.';
+    return;
+  }
+  if (!spokenTranscript) return;
+
+  const aiBtn = document.getElementById('aiBtn');
+  const noteEl = document.getElementById('current-note');
+  const spokenEl = document.getElementById('spokenText');
+
+  aiBtn.disabled = true;
+  aiBtn.textContent = '⏳ Genereren...';
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'Je bent een leraar die professionele, constructieve feedback schrijft voor leerlingen. Schrijf de feedback in het Nederlands, direct gericht aan de leerling (gebruik "jij/je"). De feedback is 2-4 zinnen, eerlijk en specifiek. Geen aanhef of ondertekening.'
+          },
+          {
+            role: 'user',
+            content: `Schrijf feedback voor ${studentName} op basis van deze notities: "${spokenTranscript}"`
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.7
+      })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    const feedback = data.choices[0].message.content.trim();
+    noteEl.value = feedback;
+    spokenTranscript = '';
+    spokenEl.textContent = '';
+    aiBtn.textContent = '✨ Genereer';
+  } catch (e) {
+    spokenEl.textContent = 'Fout: ' + e.message;
+    aiBtn.disabled = false;
+    aiBtn.textContent = '✨ Genereer';
+  }
 }
 
 async function sendCurrentFeedback() {
