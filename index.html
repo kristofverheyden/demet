@@ -891,10 +891,8 @@ Geen herhaling tussen Medals en Missions.`,
     }
     const data = await res.json();
     noteEl.value = data.content[0].text.trim();
-    spokenTranscript = '';
-    spokenInput.value = '';
     aiBtn.textContent = '✨ Genereer';
-    aiBtn.disabled = true;
+    aiBtn.disabled = false;
   } catch (e) {
     spokenInput.value = text;
     spokenInput.style.borderColor = 'var(--danger)';
