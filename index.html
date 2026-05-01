@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Classroom Feedback Tool — DemetExpert</title>
+<title>DemetExpert</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -44,89 +44,22 @@
     justify-content: space-between;
   }
 
-  .logo {
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: -0.3px;
-    color: var(--text);
-  }
+  .logo { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; color: var(--text); }
+  .logo span { color: var(--accent); }
 
-  .logo span {
-    color: var(--accent);
-  }
-
-  .badge {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    padding: 4px 10px;
-    background: var(--accent-light);
-    color: var(--accent-text);
-    border-radius: 20px;
-    font-weight: 500;
-  }
-
-  .main {
-    width: 100%;
-    max-width: 680px;
-  }
-
-  /* Progress */
-  .progress-bar {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    margin-bottom: 2rem;
-  }
-
-  .progress-step {
-    display: flex;
+  .header-user {
+    font-size: 13px;
+    color: var(--text-muted);
+    display: none;
     align-items: center;
     gap: 8px;
-    flex: 1;
   }
 
-  .step-dot {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    border: 2px solid var(--border);
-    background: var(--surface);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
-    transition: all 0.3s;
-    flex-shrink: 0;
-  }
+  .main { width: 100%; max-width: 680px; }
 
-  .step-dot.active {
-    border-color: var(--accent);
-    background: var(--accent);
-    color: white;
-  }
-
-  .step-dot.done {
-    border-color: var(--accent);
-    background: var(--accent-light);
-    color: var(--accent-text);
-  }
-
-  .step-label {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-weight: 500;
-  }
-
-  .step-label.active { color: var(--text); }
-
-  .step-line {
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-    margin: 0 8px;
-  }
+  /* Pages */
+  .page { display: none; }
+  .page.active { display: block; }
 
   /* Cards */
   .card {
@@ -137,19 +70,55 @@
     margin-bottom: 1rem;
   }
 
-  .card-title {
-    font-size: 20px;
-    font-weight: 600;
-    letter-spacing: -0.4px;
-    margin-bottom: 4px;
+  .card-title { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; margin-bottom: 4px; }
+  .card-sub { font-size: 14px; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.5; }
+
+  /* Login page */
+  .login-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 1.5rem;
+    text-align: center;
   }
 
-  .card-sub {
-    font-size: 14px;
-    color: var(--text-muted);
-    margin-bottom: 1.5rem;
-    line-height: 1.5;
+  .login-logo { font-size: 28px; font-weight: 600; letter-spacing: -0.5px; }
+  .login-logo span { color: var(--accent); }
+  .login-sub { font-size: 14px; color: var(--text-muted); }
+
+  /* Dashboard */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-top: 0.5rem;
   }
+
+  .dash-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.75rem 1.5rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dash-card:hover { border-color: var(--accent); box-shadow: 0 2px 12px rgba(45,106,79,0.1); }
+
+  .dash-card.disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .dash-icon { font-size: 28px; }
+  .dash-title { font-size: 15px; font-weight: 600; }
+  .dash-desc { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
 
   /* Form elements */
   label {
@@ -162,7 +131,7 @@
     margin-bottom: 6px;
   }
 
-  select, input[type=text], textarea {
+  select, input[type=text], input[type=number], textarea {
     width: 100%;
     padding: 10px 14px;
     border: 1px solid var(--border);
@@ -176,24 +145,15 @@
     appearance: none;
   }
 
-  select:focus, input[type=text]:focus, textarea:focus {
+  select:focus, input[type=text]:focus, input[type=number]:focus, textarea:focus {
     border-color: var(--accent);
   }
 
-  textarea {
-    resize: vertical;
-    min-height: 88px;
-    line-height: 1.5;
-  }
-
+  textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
   .field { margin-bottom: 1.25rem; }
 
   /* Buttons */
-  .btn-row {
-    display: flex;
-    gap: 10px;
-    margin-top: 1.5rem;
-  }
+  .btn-row { display: flex; gap: 10px; margin-top: 1.5rem; }
 
   button {
     padding: 10px 20px;
@@ -209,21 +169,29 @@
   }
 
   button:hover { background: var(--surface2); }
-
-  button.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: white;
-  }
-
+  button.primary { background: var(--accent); border-color: var(--accent); color: white; }
   button.primary:hover { background: var(--accent-text); border-color: var(--accent-text); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-back {
+    font-size: 13px;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    margin-bottom: 1.25rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .btn-back:hover { color: var(--text); background: none; }
 
   .btn-google {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 20px;
+    padding: 12px 24px;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--surface);
@@ -231,245 +199,96 @@
     font-size: 14px;
     font-weight: 500;
     transition: all 0.15s;
-    width: 100%;
     justify-content: center;
   }
 
   .btn-google:hover { background: var(--surface2); }
+  .google-icon { width: 18px; height: 18px; }
 
-  .google-icon {
-    width: 18px;
-    height: 18px;
+  /* Status */
+  .status { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-top: 1rem; display: none; line-height: 1.5; }
+  .status.success { background: var(--accent-light); color: var(--accent-text); border: 1px solid #b7e4c7; display: block; }
+  .status.error { background: var(--danger-bg); color: var(--danger); border: 1px solid #f5c6c0; display: block; }
+
+  /* Student selector */
+  .student-select-row { margin-bottom: 1.25rem; }
+
+  /* Student panel */
+  .student-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; }
+
+  .avatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--accent-light); color: var(--accent-text);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0; letter-spacing: 0.5px;
   }
 
-  /* Status messages */
-  .status {
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    margin-top: 1rem;
-    display: none;
-    line-height: 1.5;
+  .student-name { font-size: 14px; font-weight: 600; flex: 1; }
+
+  .sent-badge {
+    font-size: 11px; padding: 3px 9px;
+    background: var(--accent-light); color: var(--accent-text);
+    border-radius: 20px; font-weight: 600; display: none;
   }
 
-  .status.success {
-    background: var(--accent-light);
-    color: var(--accent-text);
-    border: 1px solid #b7e4c7;
-    display: block;
-  }
-
-  .status.error {
-    background: var(--danger-bg);
-    color: var(--danger);
-    border: 1px solid #f5c6c0;
-    display: block;
-  }
-
-  /* Student cards */
-  .student-item {
-    border-bottom: 1px solid var(--border);
-    padding: 1.25rem 0;
-  }
-
-  .student-item:last-child { border-bottom: none; }
-  .student-item:first-child { padding-top: 0; }
-
-  .student-fields {
-    display: grid;
-    grid-template-columns: 1fr 120px;
-    gap: 10px;
-    align-items: start;
-  }
-
-  .ai-row {
-    display: flex;
-    gap: 8px;
-    margin-top: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
+  /* AI row */
+  .ai-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
 
   .btn-mic {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: var(--radius-sm);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); transition: all 0.15s;
   }
 
   .btn-mic:hover { background: var(--surface2); }
-
-  .btn-mic.recording {
-    background: #fdf0ee;
-    border-color: var(--danger);
-    color: var(--danger);
-    animation: pulse 1.2s ease-in-out infinite;
-  }
+  .btn-mic.recording { background: #fdf0ee; border-color: var(--danger); color: var(--danger); animation: pulse 1.2s ease-in-out infinite; }
 
   .btn-ai {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    border-radius: var(--radius-sm);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid var(--accent);
-    background: var(--accent-light);
-    color: var(--accent-text);
-    transition: all 0.15s;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    cursor: pointer; border: 1px solid var(--accent);
+    background: var(--accent-light); color: var(--accent-text); transition: all 0.15s;
   }
 
   .btn-ai:hover { background: #c7efd0; }
   .btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
 
-  .spoken-text {
-    font-size: 12px;
-    color: var(--text-muted);
-    font-style: italic;
-    margin-top: 6px;
-    min-height: 16px;
-  }
-
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
-
-  .student-select-row {
-    margin-bottom: 1.25rem;
-  }
-
-  .api-note {
-    font-size: 11px;
-    color: var(--text-muted);
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 8px 12px;
-    margin-bottom: 1.25rem;
-    line-height: 1.5;
-  }
-
-  .student-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-  }
-
-  .avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    background: var(--accent-light);
-    color: var(--accent-text);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    flex-shrink: 0;
-    letter-spacing: 0.5px;
-  }
-
-  .student-name {
-    font-size: 14px;
-    font-weight: 600;
-    flex: 1;
-  }
-
-  .sent-badge {
-    font-size: 11px;
-    padding: 3px 9px;
-    background: var(--accent-light);
-    color: var(--accent-text);
-    border-radius: 20px;
-    font-weight: 600;
-    display: none;
-  }
-
   /* Spinner */
   .spinner {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
-    border-radius: 50%;
-    animation: spin 0.7s linear infinite;
-    vertical-align: middle;
-    margin-right: 6px;
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+    vertical-align: middle; margin-right: 6px;
   }
+
+  /* Divider in feedback card */
+  .section-divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
   @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
 
-  /* Steps */
-  .step { display: none; }
-  .step.active { display: block; }
-
-  /* Client ID display */
-  .client-id-box {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    color: var(--text-muted);
-    word-break: break-all;
-    margin-bottom: 1.25rem;
-  }
-
-  footer {
-    margin-top: 3rem;
-    font-size: 12px;
-    color: var(--text-muted);
-    text-align: center;
-  }
+  footer { margin-top: 3rem; font-size: 12px; color: var(--text-muted); text-align: center; }
 </style>
 </head>
 <body>
 
 <header>
   <div class="logo">Demet<span>Expert</span></div>
-  <div class="badge">Classroom Feedback</div>
+  <div class="header-user" id="headerUser"></div>
 </header>
 
 <div class="main">
 
-  <!-- Progress -->
-  <div class="progress-bar" id="progressBar">
-    <div class="progress-step">
-      <div class="step-dot active" id="dot1">1</div>
-      <span class="step-label active" id="lbl1">Inloggen</span>
-    </div>
-    <div class="step-line"></div>
-    <div class="progress-step">
-      <div class="step-dot" id="dot2">2</div>
-      <span class="step-label" id="lbl2">Klas & taak</span>
-    </div>
-    <div class="step-line"></div>
-    <div class="progress-step">
-      <div class="step-dot" id="dot3">3</div>
-      <span class="step-label" id="lbl3">Feedback</span>
-    </div>
-  </div>
-
-  <!-- Stap 1: Inloggen -->
-  <div class="step active" id="step1">
-    <div class="card">
-      <div class="card-title">Inloggen met Google</div>
-      <p class="card-sub">Verbind met je Google-account dat gekoppeld is aan Google Classroom als leraar.</p>
-
+  <!-- Loginpagina -->
+  <div class="page active" id="page-login">
+    <div class="login-wrap">
+      <div>
+        <div class="login-logo">Demet<span>Expert</span></div>
+        <p class="login-sub" style="margin-top:6px">Jouw slim feedbackplatform voor Google Classroom</p>
+      </div>
       <button class="btn-google" onclick="startLogin()">
         <svg class="google-icon" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -479,69 +298,73 @@
         </svg>
         Inloggen met Google
       </button>
-
-      <div class="status" id="loginStatus"></div>
+      <div class="status" id="loginStatus" style="max-width:320px"></div>
     </div>
   </div>
 
-  <!-- Stap 2: Klas en taak -->
-  <div class="step" id="step2">
+  <!-- Startpagina -->
+  <div class="page" id="page-home">
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem">Kies een module om te starten.</p>
+    <div class="dashboard-grid">
+      <div class="dash-card disabled">
+        <div class="dash-icon">📅</div>
+        <div class="dash-title">Tijdens de sessie</div>
+        <div class="dash-desc">Binnenkort beschikbaar</div>
+      </div>
+      <div class="dash-card" onclick="showPage('page-feedback')">
+        <div class="dash-icon">✏️</div>
+        <div class="dash-title">Feedback schrijven</div>
+        <div class="dash-desc">Geef feedback op taken via Google Classroom met AI-ondersteuning</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feedbackpagina -->
+  <div class="page" id="page-feedback">
+    <button class="btn-back" onclick="showPage('page-home')">← Terug naar startpagina</button>
+
     <div class="card">
-      <div class="card-title">Klas en taak selecteren</div>
-      <p class="card-sub">Kies de klas en de opdracht waarvoor je feedback wil ingeven.</p>
+      <div class="card-title">Feedback schrijven</div>
+      <p class="card-sub">Kies een klas en een taak — de leerlingen verschijnen automatisch.</p>
 
       <div class="field">
         <label>Klas</label>
         <select id="courseSelect" onchange="loadAssignments()">
-          <option value="">Laden...</option>
+          <option value="">Kies een klas...</option>
         </select>
       </div>
 
       <div class="field">
-        <label>Opdracht / taak</label>
-        <select id="assignmentSelect">
+        <label>Taak</label>
+        <select id="assignmentSelect" onchange="loadStudents()">
           <option value="">Selecteer eerst een klas</option>
         </select>
       </div>
 
-      <div class="btn-row">
-        <button onclick="goStep(1)">← Terug</button>
-        <button class="primary" onclick="loadStudents()">Leerlingen laden →</button>
-      </div>
       <div class="status" id="selectStatus"></div>
-    </div>
-  </div>
 
-  <!-- Stap 3: Feedback -->
-  <div class="step" id="step3">
-    <div class="card">
-      <div class="card-title">Cijfers & notities</div>
-      <p class="card-sub">Selecteer een leerling en vul een cijfer in.</p>
+      <!-- Leerlingensectie (verborgen tot geladen) -->
+      <div id="studentSection" style="display:none">
+        <hr class="section-divider">
 
-      <div class="api-note">
-        ℹ️ <strong>Cijfer</strong> wordt verstuurd via de Google Classroom API en zichtbaar voor de leerling na terugsturen. De <strong>notitie</strong> is enkel voor jezelf (lokaal).
+        <div class="student-select-row">
+          <label>Leerling</label>
+          <select id="studentSelect" onchange="showStudent(this.value)"></select>
+        </div>
+
+        <div id="studentPanel"></div>
+
+        <div class="btn-row">
+          <button class="primary" id="sendBtn" onclick="sendCurrentFeedback()">Versturen</button>
+        </div>
+        <div class="status" id="sendStatus"></div>
       </div>
-
-      <div class="student-select-row">
-        <label>Leerling</label>
-        <select id="studentSelect" onchange="showStudent(this.value)"></select>
-      </div>
-
-      <div id="studentPanel"></div>
-
-      <div class="btn-row">
-        <button onclick="goStep(2)">← Terug</button>
-        <button class="primary" id="sendBtn" onclick="sendCurrentFeedback()">Versturen</button>
-      </div>
-      <div class="status" id="sendStatus"></div>
     </div>
   </div>
 
 </div>
 
-<footer>
-  DemetExpert &mdash; Classroom Feedback Tool &mdash; Powered by Google Classroom API
-</footer>
+<footer>DemetExpert &mdash; Powered by Google Classroom &amp; Claude AI</footer>
 
 <script>
 const CLIENT_ID = '11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com';
@@ -549,30 +372,15 @@ const ANTHROPIC_KEY = atob('c2stYW50LWFwaTAzLXE3X25tQV8xUnQ3MVNZMjZ4Q3VRdFNub3Y2
 const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly';
 let accessToken = null;
 let students = [];
+let studentData = [];
 
-function setProgress(current) {
-  for (let i = 1; i <= 3; i++) {
-    const dot = document.getElementById('dot' + i);
-    const lbl = document.getElementById('lbl' + i);
-    if (i < current) {
-      dot.className = 'step-dot done';
-      dot.textContent = '✓';
-    } else if (i === current) {
-      dot.className = 'step-dot active';
-      dot.textContent = i;
-      lbl.className = 'step-label active';
-    } else {
-      dot.className = 'step-dot';
-      dot.textContent = i;
-      lbl.className = 'step-label';
-    }
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id === 'page-feedback') {
+    document.getElementById('studentSection').style.display = 'none';
+    document.getElementById('selectStatus').className = 'status';
   }
-}
-
-function goStep(n) {
-  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
-  document.getElementById('step' + n).classList.add('active');
-  setProgress(n);
 }
 
 function showStatus(id, msg, type) {
@@ -624,7 +432,7 @@ async function loadCourses() {
       opt.textContent = c.name;
       sel.appendChild(opt);
     });
-    goStep(2);
+    showPage('page-home');
   } catch (e) {
     showStatus('loginStatus', 'Fout bij ophalen klassen: ' + e.message, 'error');
   }
@@ -632,8 +440,9 @@ async function loadCourses() {
 
 async function loadAssignments() {
   const courseId = document.getElementById('courseSelect').value;
-  if (!courseId) return;
   const sel = document.getElementById('assignmentSelect');
+  document.getElementById('studentSection').style.display = 'none';
+  if (!courseId) { sel.innerHTML = '<option value="">Selecteer eerst een klas</option>'; return; }
   sel.innerHTML = '<option>Laden...</option>';
   try {
     const res = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork?orderBy=updateTime+desc`, {
@@ -641,11 +450,11 @@ async function loadAssignments() {
     });
     const data = await res.json();
     const works = (data.courseWork || []).filter(w => w.workType === 'ASSIGNMENT');
-    sel.innerHTML = '<option value="">Kies een opdracht...</option>';
     if (!works.length) {
       sel.innerHTML = '<option value="">Geen gradeerbare taken gevonden</option>';
       return;
     }
+    sel.innerHTML = '<option value="">Kies een taak...</option>';
     works.forEach(w => {
       const opt = document.createElement('option');
       opt.value = w.id;
@@ -657,16 +466,12 @@ async function loadAssignments() {
   }
 }
 
-// Per-student state: { note, grade, sent }
-let studentData = [];
-
 async function loadStudents() {
   const courseId = document.getElementById('courseSelect').value;
   const assignmentId = document.getElementById('assignmentSelect').value;
-  if (!courseId || !assignmentId) {
-    showStatus('selectStatus', 'Selecteer een klas en een opdracht.', 'error');
-    return;
-  }
+  const section = document.getElementById('studentSection');
+  if (!courseId || !assignmentId) { section.style.display = 'none'; return; }
+
   showStatus('selectStatus', 'Leerlingen ophalen...', 'success');
   try {
     const res = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/students?pageSize=100`, {
@@ -678,7 +483,8 @@ async function loadStudents() {
       showStatus('selectStatus', 'Geen leerlingen gevonden in deze klas.', 'error');
       return;
     }
-    studentData = students.map(() => ({ note: '', grade: '1', sent: false }));
+    studentData = students.map(() => ({ note: '', sent: false }));
+    spokenTranscript = '';
 
     const sel = document.getElementById('studentSelect');
     sel.innerHTML = '';
@@ -689,7 +495,8 @@ async function loadStudents() {
       sel.appendChild(opt);
     });
 
-    goStep(3);
+    document.getElementById('selectStatus').className = 'status';
+    section.style.display = 'block';
     showStudent(0);
   } catch (e) {
     showStatus('selectStatus', 'Fout: ' + e.message, 'error');
@@ -701,10 +508,8 @@ function saveCurrentStudent() {
   const i = parseInt(sel.value);
   if (isNaN(i)) return;
   const noteEl = document.getElementById('current-note');
-  const gradeEl = document.getElementById('current-grade');
   const spokenEl = document.getElementById('spokenInput');
   if (noteEl) studentData[i].note = noteEl.value;
-  if (gradeEl) studentData[i].grade = gradeEl.value;
   if (spokenEl) spokenTranscript = spokenEl.value.trim();
 }
 
@@ -719,38 +524,27 @@ function showStudent(index) {
   const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase();
   const firstName = name.split(' ')[0];
 
-  const panel = document.getElementById('studentPanel');
-  panel.innerHTML = `
-    <div class="student-header" style="margin-bottom:1rem">
+  document.getElementById('studentPanel').innerHTML = `
+    <div class="student-header">
       <div class="avatar">${initials}</div>
       <span class="student-name">${name}</span>
-      ${d.sent ? '<span class="sent-badge" style="display:inline">Verstuurd</span>' : ''}
+      ${d.sent ? '<span class="sent-badge" style="display:inline">Verstuurd ✓</span>' : ''}
     </div>
-    <div class="student-fields">
-      <div>
-        ${!d.sent ? `
-        <div class="ai-row" style="margin-bottom:8px">
-          <button class="btn-mic" id="micBtn" onclick="toggleSpeech()">🎤 Inspreken</button>
-          <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" ${spokenTranscript ? '' : 'disabled'}>✨ Genereer</button>
-        </div>
-        <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
-        ` : ''}
-        <label>Feedback</label>
-        <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
-      </div>
-      <div>
-        <label>Cijfer</label>
-        <input type="number" id="current-grade" placeholder="bv. 8.5" step="0.5" min="0" style="width:100%" value="${d.grade}" ${d.sent ? 'disabled' : ''}>
-      </div>
+    ${!d.sent ? `
+    <div class="ai-row">
+      <button class="btn-mic" id="micBtn" onclick="toggleSpeech()">🎤 Inspreken</button>
+      <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" ${spokenTranscript ? '' : 'disabled'}>✨ Genereer</button>
     </div>
+    <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
+    ` : ''}
+    <label>Feedback</label>
+    <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
   `;
 
   const btn = document.getElementById('sendBtn');
   btn.disabled = d.sent;
   btn.textContent = d.sent ? 'Verstuurd' : 'Versturen';
-
-  const statusEl = document.getElementById('sendStatus');
-  statusEl.className = 'status';
+  document.getElementById('sendStatus').className = 'status';
 }
 
 let recognition = null;
@@ -762,16 +556,10 @@ function toggleSpeech() {
   const aiBtn = document.getElementById('aiBtn');
   const spokenInput = document.getElementById('spokenInput');
 
-  if (recognition) {
-    recognition.stop();
-    return;
-  }
+  if (recognition) { recognition.stop(); return; }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    spokenInput.placeholder = 'Spraakherkenning niet ondersteund. Gebruik Chrome of Edge.';
-    return;
-  }
+  if (!SR) { spokenInput.placeholder = 'Spraakherkenning niet ondersteund. Gebruik Chrome of Edge.'; return; }
 
   recognition = new SR();
   recognition.lang = 'nl-NL';
@@ -788,15 +576,10 @@ function toggleSpeech() {
     clearTimeout(silenceTimer);
     let interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) {
-        sessionFinal += e.results[i][0].transcript + ' ';
-      } else {
-        interim += e.results[i][0].transcript;
-      }
+      if (e.results[i].isFinal) sessionFinal += e.results[i][0].transcript + ' ';
+      else interim += e.results[i][0].transcript;
     }
-    const full = (base ? base + ' ' : '') + sessionFinal + interim;
-    spokenInput.value = full.trim();
-
+    spokenInput.value = ((base ? base + ' ' : '') + sessionFinal + interim).trim();
     silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
   };
 
@@ -814,24 +597,19 @@ function toggleSpeech() {
     recognition = null;
     micBtn.textContent = '🎤 Inspreken';
     micBtn.classList.remove('recording');
-    if (e.error !== 'no-speech') {
-      spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
-    }
+    if (e.error !== 'no-speech') spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
   };
 
   recognition.start();
 }
 
 async function generateFeedback(studentName) {
-  const key = ANTHROPIC_KEY;
   const spokenInput = document.getElementById('spokenInput');
   const text = spokenInput.value.trim();
-
   if (!text) return;
 
   const aiBtn = document.getElementById('aiBtn');
   const noteEl = document.getElementById('current-note');
-
   aiBtn.disabled = true;
   aiBtn.textContent = '⏳ Genereren...';
 
@@ -840,7 +618,7 @@ async function generateFeedback(studentName) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': key,
+        'x-api-key': ANTHROPIC_KEY,
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true'
       },
@@ -894,27 +672,17 @@ Geen herhaling tussen Medals en Missions.`,
     aiBtn.textContent = '✨ Genereer';
     aiBtn.disabled = false;
   } catch (e) {
-    spokenInput.value = text;
-    spokenInput.style.borderColor = 'var(--danger)';
     aiBtn.disabled = false;
     aiBtn.textContent = '✨ Genereer';
     document.getElementById('sendStatus').className = 'status error';
-    document.getElementById('sendStatus').textContent = 'AI-fout: ' + e.message + (e.message === 'Failed to fetch' ? ' — controleer je API key en of api.anthropic.com bereikbaar is.' : '');
+    document.getElementById('sendStatus').textContent = 'AI-fout: ' + e.message + (e.message === 'Failed to fetch' ? ' — controleer of api.anthropic.com bereikbaar is.' : '');
   }
 }
 
 async function sendCurrentFeedback() {
   saveCurrentStudent();
-  const sel = document.getElementById('studentSelect');
-  const i = parseInt(sel.value);
+  const i = parseInt(document.getElementById('studentSelect').value);
   const d = studentData[i];
-  const grade = d.grade !== '' ? parseFloat(d.grade) : null;
-
-  if (grade === null || isNaN(grade)) {
-    showStatus('sendStatus', 'Vul een cijfer in voor deze leerling.', 'error');
-    return;
-  }
-
   const courseId = document.getElementById('courseSelect').value;
   const assignmentId = document.getElementById('assignmentSelect').value;
   const btn = document.getElementById('sendBtn');
@@ -927,11 +695,9 @@ async function sendCurrentFeedback() {
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const subData = await subRes.json();
-
     if (subData.error) throw new Error(`API-fout: ${subData.error.message}`);
 
     const submission = (subData.studentSubmissions || []).find(s => s.userId === students[i].userId);
-
     if (!submission) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
 
     const patchRes = await fetch(
@@ -939,12 +705,12 @@ async function sendCurrentFeedback() {
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draftGrade: grade })
+        body: JSON.stringify({ draftGrade: 1 })
       }
     );
     if (!patchRes.ok) {
-      const patchData = await patchRes.json();
-      throw new Error(patchData.error?.message || 'Fout bij instellen cijfer.');
+      const pd = await patchRes.json();
+      throw new Error(pd.error?.message || 'Fout bij instellen punt.');
     }
 
     const returnRes = await fetch(
@@ -952,13 +718,13 @@ async function sendCurrentFeedback() {
       { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
     );
     if (!returnRes.ok) {
-      const returnData = await returnRes.json();
-      throw new Error(returnData.error?.message || 'Fout bij terugsturen inlevering.');
+      const rd = await returnRes.json();
+      throw new Error(rd.error?.message || 'Fout bij terugsturen.');
     }
 
     studentData[i].sent = true;
     document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
-    showStatus('sendStatus', `Cijfer ${grade} verstuurd voor ${students[i].profile.name.fullName}.`, 'success');
+    showStatus('sendStatus', `Feedback verstuurd voor ${students[i].profile.name.fullName}.`, 'success');
     showStudent(i);
   } catch (e) {
     btn.innerHTML = 'Versturen';
