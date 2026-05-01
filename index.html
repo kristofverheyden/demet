@@ -846,9 +846,43 @@ async function generateFeedback(studentName) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 300,
-        system: 'Je bent een leraar die professionele, constructieve feedback schrijft voor leerlingen. Schrijf de feedback in het Nederlands, direct gericht aan de leerling (gebruik "jij/je"). De feedback is 2-4 zinnen, eerlijk en specifiek. Geen aanhef of ondertekening.',
-        messages: [{ role: 'user', content: `Schrijf feedback voor ${studentName} op basis van deze notities: "${text}"` }]
+        max_tokens: 600,
+        system: `Schrijf feedback voor een leerling op een test jezelf (TJ) volgens dit vaste format en in correct Nederlands.
+
+Structuur (altijd exact volgen):
+
+Eerste lijn:
+Schrijf exact "In orde" of "Remediëring nodig" (dit moet de eerste zin zijn).
+
+Algemeen:
+Korte samenvatting (max. 2 zinnen).
+Vermeld of het een TJ of herkansing TJ is.
+Benoem globaal hoe goed het gemaakt is.
+
+Medals:
+Opsomming van positieve punten.
+Vermeld indien nodig het deel (bv. Deel 1, Deel 2…).
+Focus op wat goed lukt (berekeningen, inzicht, vraagstukken, grafieken…).
+
+Missions:
+Opsomming van werkpunten.
+Concreet en didactisch formuleren.
+Vermeld indien nodig het deel.
+Typische zaken: notatie, rekenfouten, ongelijkheden, grafieken, antwoordzinnen…
+
+Algemeen besluit:
+Duidelijk zeggen:
+- of er remediëring nodig is of niet
+- wat de leerling concreet moet doen (bv. remediëring maken, herkansing TJ, verbeteren…)
+
+Belangrijke regels:
+Gebruik altijd "TJ" (niet "testje", niet "tussen").
+Schrijf in duidelijke, eenvoudige leerkrachtentaal.
+Wees positief maar eerlijk.
+Geen lange paragrafen, wel duidelijke structuur.
+Missions zijn altijd verbeterpunten, Medals altijd positief.
+Geen herhaling tussen Medals en Missions.`,
+        messages: [{ role: 'user', content: `Schrijf feedback voor ${studentName} op basis van deze notities van de leerkracht: "${text}"` }]
       })
     });
     if (!res.ok) {
