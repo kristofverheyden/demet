@@ -282,11 +282,8 @@
     align-items: start;
   }
 
-  .grade-label-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 6px;
+  .student-select-row {
+    margin-bottom: 1.25rem;
   }
 
   .api-note {
@@ -459,18 +456,23 @@
   <!-- Stap 3: Feedback -->
   <div class="step" id="step3">
     <div class="card">
-      <div class="card-title">Feedback schrijven</div>
-      <p class="card-sub">Schrijf per leerling je opmerking. Lege velden worden overgeslagen.</p>
+      <div class="card-title">Cijfers & notities</div>
+      <p class="card-sub">Selecteer een leerling en vul een cijfer in.</p>
 
       <div class="api-note">
         ℹ️ <strong>Cijfer</strong> wordt verstuurd via de Google Classroom API en zichtbaar voor de leerling na terugsturen. De <strong>notitie</strong> is enkel voor jezelf (lokaal).
       </div>
 
-      <div id="studentList"></div>
+      <div class="student-select-row">
+        <label>Leerling</label>
+        <select id="studentSelect" onchange="showStudent(this.value)"></select>
+      </div>
+
+      <div id="studentPanel"></div>
 
       <div class="btn-row">
         <button onclick="goStep(2)">← Terug</button>
-        <button class="primary" id="sendAllBtn" onclick="sendAllFeedback()">Alles versturen</button>
+        <button class="primary" id="sendBtn" onclick="sendCurrentFeedback()">Versturen</button>
       </div>
       <div class="status" id="sendStatus"></div>
     </div>
@@ -591,6 +593,9 @@ async function loadAssignments() {
   }
 }
 
+// Per-student state: { note, grade, sent }
+let studentData = [];
+
 async function loadStudents() {
   const courseId = document.getElementById('courseSelect').value;
   const assignmentId = document.getElementById('assignmentSelect').value;
@@ -609,101 +614,121 @@ async function loadStudents() {
       showStatus('selectStatus', 'Geen leerlingen gevonden in deze klas.', 'error');
       return;
     }
-    const list = document.getElementById('studentList');
-    list.innerHTML = '';
+    studentData = students.map(() => ({ note: '', grade: '', sent: false }));
+
+    const sel = document.getElementById('studentSelect');
+    sel.innerHTML = '';
     students.forEach((s, i) => {
-      const name = s.profile.name.fullName;
-      const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase();
-      const firstName = name.split(' ')[0];
-      const div = document.createElement('div');
-      div.className = 'student-item';
-      div.innerHTML = `
-        <div class="student-header">
-          <div class="avatar">${initials}</div>
-          <span class="student-name">${name}</span>
-          <span class="sent-badge" id="sent-${i}">Verstuurd</span>
-        </div>
-        <div class="student-fields">
-          <div>
-            <label>Notitie (persoonlijk)</label>
-            <textarea id="fb-${i}" placeholder="Notities voor ${firstName}..."></textarea>
-          </div>
-          <div>
-            <label>Cijfer</label>
-            <input type="number" id="grade-${i}" placeholder="bv. 8.5" step="0.5" min="0" style="width:100%">
-          </div>
-        </div>
-      `;
-      list.appendChild(div);
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = s.profile.name.fullName;
+      sel.appendChild(opt);
     });
+
     goStep(3);
+    showStudent(0);
   } catch (e) {
     showStatus('selectStatus', 'Fout: ' + e.message, 'error');
   }
 }
 
-async function sendAllFeedback() {
+function saveCurrentStudent() {
+  const sel = document.getElementById('studentSelect');
+  const i = parseInt(sel.value);
+  if (isNaN(i)) return;
+  const noteEl = document.getElementById('current-note');
+  const gradeEl = document.getElementById('current-grade');
+  if (noteEl) studentData[i].note = noteEl.value;
+  if (gradeEl) studentData[i].grade = gradeEl.value;
+}
+
+function showStudent(index) {
+  saveCurrentStudent();
+  index = parseInt(index);
+  document.getElementById('studentSelect').value = index;
+
+  const s = students[index];
+  const d = studentData[index];
+  const name = s.profile.name.fullName;
+  const initials = name.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const firstName = name.split(' ')[0];
+
+  const panel = document.getElementById('studentPanel');
+  panel.innerHTML = `
+    <div class="student-header" style="margin-bottom:1rem">
+      <div class="avatar">${initials}</div>
+      <span class="student-name">${name}</span>
+      ${d.sent ? '<span class="sent-badge" style="display:inline">Verstuurd</span>' : ''}
+    </div>
+    <div class="student-fields">
+      <div>
+        <label>Notitie (persoonlijk)</label>
+        <textarea id="current-note" placeholder="Notities voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
+      </div>
+      <div>
+        <label>Cijfer</label>
+        <input type="number" id="current-grade" placeholder="bv. 8.5" step="0.5" min="0" style="width:100%" value="${d.grade}" ${d.sent ? 'disabled' : ''}>
+      </div>
+    </div>
+  `;
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = d.sent;
+  btn.textContent = d.sent ? 'Verstuurd' : 'Versturen';
+
+  const statusEl = document.getElementById('sendStatus');
+  statusEl.className = 'status';
+}
+
+async function sendCurrentFeedback() {
+  saveCurrentStudent();
+  const sel = document.getElementById('studentSelect');
+  const i = parseInt(sel.value);
+  const d = studentData[i];
+  const grade = d.grade !== '' ? parseFloat(d.grade) : null;
+
+  if (grade === null || isNaN(grade)) {
+    showStatus('sendStatus', 'Vul een cijfer in voor deze leerling.', 'error');
+    return;
+  }
+
   const courseId = document.getElementById('courseSelect').value;
   const assignmentId = document.getElementById('assignmentSelect').value;
-  const btn = document.getElementById('sendAllBtn');
+  const btn = document.getElementById('sendBtn');
   btn.innerHTML = '<span class="spinner"></span>Versturen...';
   btn.disabled = true;
 
-  let sent = 0;
-  let skipped = 0;
-  let errors = 0;
+  try {
+    const subRes = await fetch(
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?userId=${students[i].userId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const subData = await subRes.json();
+    const submission = (subData.studentSubmissions || [])[0];
+    if (!submission) throw new Error('Geen inlevering gevonden.');
 
-  for (let i = 0; i < students.length; i++) {
-    const gradeRaw = document.getElementById('grade-' + i).value.trim();
-    const grade = gradeRaw !== '' ? parseFloat(gradeRaw) : null;
+    await fetch(
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}?updateMask=draftGrade`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ draftGrade: grade })
+      }
+    );
 
-    if (grade === null || isNaN(grade)) { skipped++; continue; }
+    await fetch(
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}:return`,
+      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
+    );
 
-    const studentId = students[i].userId;
-    try {
-      const subRes = await fetch(
-        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?userId=${studentId}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const subData = await subRes.json();
-      const submission = (subData.studentSubmissions || [])[0];
-      if (!submission) { skipped++; continue; }
-
-      await fetch(
-        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}?updateMask=draftGrade`,
-        {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ draftGrade: grade })
-        }
-      );
-
-      await fetch(
-        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}:return`,
-        { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
-      );
-
-      document.getElementById('sent-' + i).style.display = 'inline';
-      document.getElementById('fb-' + i).disabled = true;
-      document.getElementById('grade-' + i).disabled = true;
-      sent++;
-    } catch (e) {
-      errors++;
-      console.error('Fout voor leerling ' + i, e);
-    }
-  }
-
-  btn.innerHTML = 'Alles versturen';
-  btn.disabled = false;
-
-  if (sent > 0) {
-    const errMsg = errors > 0 ? ` ${errors} fout(en) opgetreden.` : '';
-    const skipMsg = skipped > 0 ? ` ${skipped} leerling(en) overgeslagen (geen cijfer).` : '';
-    showStatus('sendStatus', `${sent} cijfer${sent > 1 ? 's' : ''} verstuurd en teruggegeven.${skipMsg}${errMsg}`, 'success');
-  } else if (errors > 0) {
-    showStatus('sendStatus', `${errors} fout(en) bij het versturen. Controleer de console.`, 'error');
-  } else {
-    showStatus('sendStatus', 'Geen cijfers ingegeven. Vul minstens één cijfer in.', 'error');
+    studentData[i].sent = true;
+    document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
+    showStatus('sendStatus', `Cijfer ${grade} verstuurd voor ${students[i].profile.name.fullName}.`, 'success');
+    showStudent(i);
+  } catch (e) {
+    btn.innerHTML = 'Versturen';
+    btn.disabled = false;
+    showStatus('sendStatus', 'Fout: ' + e.message, 'error');
   }
 }
 </script>
