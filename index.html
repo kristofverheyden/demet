@@ -149,7 +149,7 @@
     border-color: var(--accent);
   }
 
-  textarea { resize: vertical; min-height: 88px; line-height: 1.5; }
+  textarea { resize: none; min-height: 88px; line-height: 1.5; overflow: hidden; }
   .field { margin-bottom: 1.25rem; }
 
   /* Buttons */
@@ -389,6 +389,19 @@ function showStatus(id, msg, type) {
   el.className = 'status ' + type;
 }
 
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
+}
+
+document.addEventListener('input', e => {
+  if (e.target.tagName === 'TEXTAREA') autoResize(e.target);
+});
+
+function initTextareas() {
+  document.querySelectorAll('textarea').forEach(autoResize);
+}
+
 function startLogin() {
   const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
   const scope = encodeURIComponent(SCOPES);
@@ -545,6 +558,7 @@ function showStudent(index) {
   btn.disabled = d.sent;
   btn.textContent = d.sent ? 'Verstuurd' : 'Versturen';
   document.getElementById('sendStatus').className = 'status';
+  setTimeout(initTextareas, 0);
 }
 
 let recognition = null;
@@ -654,6 +668,7 @@ Duidelijk zeggen:
 - wat de leerling concreet moet doen (bv. remediëring maken, herkansing TJ, verbeteren…)
 
 Belangrijke regels:
+Spreek de leerling altijd direct aan in de tweede persoon (je/jij). Schrijf nooit in de derde persoon. Gebruik de voornaam van de leerling enkel af en toe als aanspreekvorm (bv. "Goed gedaan, Emmanuelle!" of "Je hebt de TJ goed gemaakt, Emmanuelle."), niet als onderwerp van een zin.
 Gebruik altijd "TJ" (niet "testje", niet "tussen").
 Schrijf in duidelijke, eenvoudige leerkrachtentaal.
 Wees positief maar eerlijk.
