@@ -700,14 +700,28 @@ async function sendCurrentFeedback() {
 
   try {
     const subRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?userId=${students[i].userId}`,
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?userId=${students[i].userId}&pageSize=10`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const subData = await subRes.json();
-    const submission = (subData.studentSubmissions || [])[0];
-    if (!submission) throw new Error('Geen inlevering gevonden.');
 
-    await fetch(
+    if (subData.error) throw new Error(subData.error.message || 'API-fout bij ophalen inlevering.');
+
+    let submission = (subData.studentSubmissions || [])[0];
+
+    if (!submission) {
+      // Haal alle submissions op zonder userId-filter als fallback
+      const allRes = await fetch(
+        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?pageSize=100`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const allData = await allRes.json();
+      submission = (allData.studentSubmissions || []).find(s => s.userId === students[i].userId);
+    }
+
+    if (!submission) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}. Controleer of de leerling in de klas zit en de opdracht beschikbaar is.`);
+
+    const patchRes = await fetch(
       `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}?updateMask=draftGrade`,
       {
         method: 'PATCH',
@@ -715,11 +729,19 @@ async function sendCurrentFeedback() {
         body: JSON.stringify({ draftGrade: grade })
       }
     );
+    if (!patchRes.ok) {
+      const patchData = await patchRes.json();
+      throw new Error(patchData.error?.message || 'Fout bij instellen cijfer.');
+    }
 
-    await fetch(
+    const returnRes = await fetch(
       `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}:return`,
       { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
     );
+    if (!returnRes.ok) {
+      const returnData = await returnRes.json();
+      throw new Error(returnData.error?.message || 'Fout bij terugsturen inlevering.');
+    }
 
     studentData[i].sent = true;
     document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
