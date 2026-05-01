@@ -704,26 +704,16 @@ async function sendCurrentFeedback() {
 
   try {
     const subRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?userId=${students[i].userId}&pageSize=10`,
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?pageSize=100`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const subData = await subRes.json();
 
-    if (subData.error) throw new Error(subData.error.message || 'API-fout bij ophalen inlevering.');
+    if (subData.error) throw new Error(`API-fout: ${subData.error.message}`);
 
-    let submission = (subData.studentSubmissions || [])[0];
+    const submission = (subData.studentSubmissions || []).find(s => s.userId === students[i].userId);
 
-    if (!submission) {
-      // Haal alle submissions op zonder userId-filter als fallback
-      const allRes = await fetch(
-        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?pageSize=100`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      const allData = await allRes.json();
-      submission = (allData.studentSubmissions || []).find(s => s.userId === students[i].userId);
-    }
-
-    if (!submission) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}. Controleer of de leerling in de klas zit en de opdracht beschikbaar is.`);
+    if (!submission) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
 
     const patchRes = await fetch(
       `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}?updateMask=draftGrade`,
