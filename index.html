@@ -565,8 +565,17 @@ let recognition = null;
 let spokenTranscript = '';
 let silenceTimer = null;
 
-const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+const isAndroid = /Android/i.test(navigator.userAgent);
 let isRecording = false;
+
+function stopRecording(micBtn, aiBtn) {
+  isRecording = false;
+  micBtn.textContent = '🎤 Inspreken';
+  micBtn.classList.remove('recording');
+  const t = document.getElementById('spokenInput');
+  if (t && t.value.trim()) aiBtn.disabled = false;
+}
 
 function toggleSpeech() {
   const micBtn = document.getElementById('micBtn');
@@ -580,7 +589,7 @@ function toggleSpeech() {
   }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { spokenInput.placeholder = 'Spraakherkenning niet ondersteund. Gebruik Chrome of Edge.'; return; }
+  if (!SR) { spokenInput.placeholder = 'Spraakherkenning niet ondersteund. Gebruik Safari of Chrome op iOS 14.5+.'; return; }
 
   isRecording = true;
   micBtn.textContent = '⏹ Stop';
@@ -591,8 +600,9 @@ function toggleSpeech() {
 
     recognition = new SR();
     recognition.lang = 'nl-NL';
-    recognition.continuous = !isMobile;
-    recognition.interimResults = !isMobile;
+    // iOS en Android: continuous=false vermijdt service-not-allowed
+    recognition.continuous = !isIOS && !isAndroid;
+    recognition.interimResults = !isIOS && !isAndroid;
 
     const base = spokenInput.value.trim();
     let sessionFinal = '';
@@ -606,36 +616,40 @@ function toggleSpeech() {
       }
       spokenInput.value = ((base ? base + ' ' : '') + sessionFinal + interim).trim();
       autoResize(spokenInput);
-      if (!isMobile) silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
+      if (!isIOS && !isAndroid) silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
     };
 
     recognition.onend = () => {
       clearTimeout(silenceTimer);
       recognition = null;
       spokenTranscript = spokenInput.value.trim();
-      if (isRecording && isMobile) {
-        // Herstart automatisch op mobiel
+      if (isRecording && isAndroid) {
+        // Android: auto-herstart werkt zonder gebruikersactie
         setTimeout(startRecognition, 150);
       } else {
-        isRecording = false;
-        micBtn.textContent = '🎤 Inspreken';
-        micBtn.classList.remove('recording');
-        if (spokenTranscript) aiBtn.disabled = false;
+        // iOS: vereist nieuwe tik — stop netjes, tekst blijft staan
+        stopRecording(micBtn, aiBtn);
       }
     };
 
     recognition.onerror = (e) => {
       clearTimeout(silenceTimer);
-      if (e.error === 'no-speech' && isRecording && isMobile) {
+      if (e.error === 'no-speech') {
         recognition = null;
-        setTimeout(startRecognition, 150);
+        if (isRecording && isAndroid) {
+          setTimeout(startRecognition, 150);
+        } else {
+          stopRecording(micBtn, aiBtn);
+        }
         return;
       }
       recognition = null;
-      isRecording = false;
-      micBtn.textContent = '🎤 Inspreken';
-      micBtn.classList.remove('recording');
-      if (e.error !== 'no-speech') spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
+      stopRecording(micBtn, aiBtn);
+      if (e.error === 'not-allowed') {
+        spokenInput.placeholder = 'Microfoon toegang geweigerd. Controleer je browserinstellingen.';
+      } else {
+        spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
+      }
     };
 
     recognition.start();
