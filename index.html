@@ -580,8 +580,12 @@ async function loadAssignments() {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await res.json();
-    const works = data.courseWork || [];
+    const works = (data.courseWork || []).filter(w => w.workType === 'ASSIGNMENT');
     sel.innerHTML = '<option value="">Kies een opdracht...</option>';
+    if (!works.length) {
+      sel.innerHTML = '<option value="">Geen gradeerbare taken gevonden</option>';
+      return;
+    }
     works.forEach(w => {
       const opt = document.createElement('option');
       opt.value = w.id;
