@@ -470,14 +470,6 @@
       <div class="card-title">Inloggen met Google</div>
       <p class="card-sub">Verbind met je Google-account dat gekoppeld is aan Google Classroom als leraar.</p>
 
-      <div class="field">
-        <label>Anthropic API Key (voor AI-feedback via Claude)</label>
-        <input type="text" id="openaiKey" placeholder="sk-ant-..." autocomplete="off">
-      </div>
-
-      <label>Jouw Client ID</label>
-      <div class="client-id-box">11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com</div>
-
       <button class="btn-google" onclick="startLogin()">
         <svg class="google-icon" viewBox="0 0 24 24">
           <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -553,6 +545,7 @@
 
 <script>
 const CLIENT_ID = '11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com';
+const ANTHROPIC_KEY = atob('c2stYW50LWFwaTAzLXE3X25tQV8xUnQ3MVNZMjZ4Q3VRdFNub3Y2dTZqTGVZX2tOc19IbDZLNHF1SFZRT3RYY0NyVG9wdV91NUUyMFFjNFNNTWhZYWJ6VHhYbU82VUNfajBRLWZOekhZd0FB');
 const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly';
 let accessToken = null;
 let students = [];
@@ -830,14 +823,10 @@ function toggleSpeech() {
 }
 
 async function generateFeedback(studentName) {
-  const key = document.getElementById('openaiKey')?.value.trim();
+  const key = ANTHROPIC_KEY;
   const spokenInput = document.getElementById('spokenInput');
   const text = spokenInput.value.trim();
 
-  if (!key) {
-    spokenInput.value = 'Vul eerst een Anthropic API key in bij stap 1.';
-    return;
-  }
   if (!text) return;
 
   const aiBtn = document.getElementById('aiBtn');
