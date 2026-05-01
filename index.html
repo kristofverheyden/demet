@@ -565,56 +565,83 @@ let recognition = null;
 let spokenTranscript = '';
 let silenceTimer = null;
 
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+let isRecording = false;
+
 function toggleSpeech() {
   const micBtn = document.getElementById('micBtn');
   const aiBtn = document.getElementById('aiBtn');
   const spokenInput = document.getElementById('spokenInput');
 
-  if (recognition) { recognition.stop(); return; }
+  if (isRecording) {
+    isRecording = false;
+    if (recognition) recognition.stop();
+    return;
+  }
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) { spokenInput.placeholder = 'Spraakherkenning niet ondersteund. Gebruik Chrome of Edge.'; return; }
 
-  recognition = new SR();
-  recognition.lang = 'nl-NL';
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
+  isRecording = true;
   micBtn.textContent = '⏹ Stop';
   micBtn.classList.add('recording');
 
-  const base = spokenInput.value.trim();
-  let sessionFinal = '';
+  function startRecognition() {
+    if (!isRecording) return;
 
-  recognition.onresult = (e) => {
-    clearTimeout(silenceTimer);
-    let interim = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      if (e.results[i].isFinal) sessionFinal += e.results[i][0].transcript + ' ';
-      else interim += e.results[i][0].transcript;
-    }
-    spokenInput.value = ((base ? base + ' ' : '') + sessionFinal + interim).trim();
-    silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
-  };
+    recognition = new SR();
+    recognition.lang = 'nl-NL';
+    recognition.continuous = !isMobile;
+    recognition.interimResults = !isMobile;
 
-  recognition.onend = () => {
-    clearTimeout(silenceTimer);
-    recognition = null;
-    micBtn.textContent = '🎤 Inspreken';
-    micBtn.classList.remove('recording');
-    spokenTranscript = spokenInput.value.trim();
-    if (spokenTranscript) aiBtn.disabled = false;
-  };
+    const base = spokenInput.value.trim();
+    let sessionFinal = '';
 
-  recognition.onerror = (e) => {
-    clearTimeout(silenceTimer);
-    recognition = null;
-    micBtn.textContent = '🎤 Inspreken';
-    micBtn.classList.remove('recording');
-    if (e.error !== 'no-speech') spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
-  };
+    recognition.onresult = (e) => {
+      clearTimeout(silenceTimer);
+      let interim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) sessionFinal += e.results[i][0].transcript + ' ';
+        else interim += e.results[i][0].transcript;
+      }
+      spokenInput.value = ((base ? base + ' ' : '') + sessionFinal + interim).trim();
+      autoResize(spokenInput);
+      if (!isMobile) silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
+    };
 
-  recognition.start();
+    recognition.onend = () => {
+      clearTimeout(silenceTimer);
+      recognition = null;
+      spokenTranscript = spokenInput.value.trim();
+      if (isRecording && isMobile) {
+        // Herstart automatisch op mobiel
+        setTimeout(startRecognition, 150);
+      } else {
+        isRecording = false;
+        micBtn.textContent = '🎤 Inspreken';
+        micBtn.classList.remove('recording');
+        if (spokenTranscript) aiBtn.disabled = false;
+      }
+    };
+
+    recognition.onerror = (e) => {
+      clearTimeout(silenceTimer);
+      if (e.error === 'no-speech' && isRecording && isMobile) {
+        recognition = null;
+        setTimeout(startRecognition, 150);
+        return;
+      }
+      recognition = null;
+      isRecording = false;
+      micBtn.textContent = '🎤 Inspreken';
+      micBtn.classList.remove('recording');
+      if (e.error !== 'no-speech') spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
+    };
+
+    recognition.start();
+  }
+
+  startRecognition();
 }
 
 async function generateFeedback(studentName) {
