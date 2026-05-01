@@ -685,7 +685,7 @@ async function loadStudents() {
       showStatus('selectStatus', 'Geen leerlingen gevonden in deze klas.', 'error');
       return;
     }
-    studentData = students.map(() => ({ note: '', grade: '', sent: false }));
+    studentData = students.map(() => ({ note: '', grade: '1', sent: false }));
 
     const sel = document.getElementById('studentSelect');
     sel.innerHTML = '';
@@ -709,8 +709,10 @@ function saveCurrentStudent() {
   if (isNaN(i)) return;
   const noteEl = document.getElementById('current-note');
   const gradeEl = document.getElementById('current-grade');
+  const spokenEl = document.getElementById('spokenInput');
   if (noteEl) studentData[i].note = noteEl.value;
   if (gradeEl) studentData[i].grade = gradeEl.value;
+  if (spokenEl) spokenTranscript = spokenEl.value.trim();
 }
 
 function showStudent(index) {
@@ -725,7 +727,6 @@ function showStudent(index) {
   const firstName = name.split(' ')[0];
 
   const panel = document.getElementById('studentPanel');
-  const hasAI = !!document.getElementById('openaiKey')?.value.trim();
   panel.innerHTML = `
     <div class="student-header" style="margin-bottom:1rem">
       <div class="avatar">${initials}</div>
@@ -734,14 +735,15 @@ function showStudent(index) {
     </div>
     <div class="student-fields">
       <div>
+        ${!d.sent ? `
+        <div class="ai-row" style="margin-bottom:8px">
+          <button class="btn-mic" id="micBtn" onclick="toggleSpeech()">🎤 Inspreken</button>
+          <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" ${spokenTranscript ? '' : 'disabled'}>✨ Genereer</button>
+        </div>
+        <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
+        ` : ''}
         <label>Feedback</label>
         <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
-        ${!d.sent ? `
-        <div class="ai-row">
-          <button class="btn-mic" id="micBtn" onclick="toggleSpeech('${firstName}')">🎤 Inspreken</button>
-          <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" disabled>✨ Genereer</button>
-        </div>
-        <div class="spoken-text" id="spokenText"></div>` : ''}
       </div>
       <div>
         <label>Cijfer</label>
@@ -760,11 +762,12 @@ function showStudent(index) {
 
 let recognition = null;
 let spokenTranscript = '';
+let silenceTimer = null;
 
-function toggleSpeech(firstName) {
+function toggleSpeech() {
   const micBtn = document.getElementById('micBtn');
   const aiBtn = document.getElementById('aiBtn');
-  const spokenEl = document.getElementById('spokenText');
+  const spokenInput = document.getElementById('spokenInput');
 
   if (recognition) {
     recognition.stop();
@@ -773,37 +776,54 @@ function toggleSpeech(firstName) {
 
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
-    spokenEl.textContent = 'Spraakherkenning niet ondersteund in deze browser. Gebruik Chrome of Edge.';
+    spokenInput.placeholder = 'Spraakherkenning niet ondersteund. Gebruik Chrome of Edge.';
     return;
   }
 
   recognition = new SR();
   recognition.lang = 'nl-NL';
-  recognition.continuous = false;
+  recognition.continuous = true;
   recognition.interimResults = true;
 
   micBtn.textContent = '⏹ Stop';
   micBtn.classList.add('recording');
-  spokenEl.textContent = 'Luisteren...';
+
+  const base = spokenInput.value.trim();
+  let sessionFinal = '';
 
   recognition.onresult = (e) => {
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
-    spokenEl.textContent = transcript;
-    if (e.results[0].isFinal) spokenTranscript = transcript;
+    clearTimeout(silenceTimer);
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        sessionFinal += e.results[i][0].transcript + ' ';
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    const full = (base ? base + ' ' : '') + sessionFinal + interim;
+    spokenInput.value = full.trim();
+
+    silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
   };
 
   recognition.onend = () => {
+    clearTimeout(silenceTimer);
     recognition = null;
     micBtn.textContent = '🎤 Inspreken';
     micBtn.classList.remove('recording');
+    spokenTranscript = spokenInput.value.trim();
     if (spokenTranscript) aiBtn.disabled = false;
   };
 
   recognition.onerror = (e) => {
+    clearTimeout(silenceTimer);
     recognition = null;
     micBtn.textContent = '🎤 Inspreken';
     micBtn.classList.remove('recording');
-    spokenEl.textContent = 'Fout bij spraakherkenning: ' + e.error;
+    if (e.error !== 'no-speech') {
+      spokenInput.value = (spokenInput.value + ' [fout: ' + e.error + ']').trim();
+    }
   };
 
   recognition.start();
@@ -811,15 +831,17 @@ function toggleSpeech(firstName) {
 
 async function generateFeedback(studentName) {
   const key = document.getElementById('openaiKey')?.value.trim();
+  const spokenInput = document.getElementById('spokenInput');
+  const text = spokenInput.value.trim();
+
   if (!key) {
-    document.getElementById('spokenText').textContent = 'Vul eerst een OpenAI API key in bij stap 1.';
+    spokenInput.value = 'Vul eerst een Anthropic API key in bij stap 1.';
     return;
   }
-  if (!spokenTranscript) return;
+  if (!text) return;
 
   const aiBtn = document.getElementById('aiBtn');
   const noteEl = document.getElementById('current-note');
-  const spokenEl = document.getElementById('spokenText');
 
   aiBtn.disabled = true;
   aiBtn.textContent = '⏳ Genereren...';
@@ -837,25 +859,26 @@ async function generateFeedback(studentName) {
         model: 'claude-sonnet-4-6',
         max_tokens: 300,
         system: 'Je bent een leraar die professionele, constructieve feedback schrijft voor leerlingen. Schrijf de feedback in het Nederlands, direct gericht aan de leerling (gebruik "jij/je"). De feedback is 2-4 zinnen, eerlijk en specifiek. Geen aanhef of ondertekening.',
-        messages: [
-          {
-            role: 'user',
-            content: `Schrijf feedback voor ${studentName} op basis van deze notities: "${spokenTranscript}"`
-          }
-        ]
+        messages: [{ role: 'user', content: `Schrijf feedback voor ${studentName} op basis van deze notities: "${text}"` }]
       })
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${res.status}`);
+    }
     const data = await res.json();
-    if (data.error) throw new Error(data.error.message);
-    const feedback = data.content[0].text.trim();
-    noteEl.value = feedback;
+    noteEl.value = data.content[0].text.trim();
     spokenTranscript = '';
-    spokenEl.textContent = '';
+    spokenInput.value = '';
     aiBtn.textContent = '✨ Genereer';
+    aiBtn.disabled = true;
   } catch (e) {
-    spokenEl.textContent = 'Fout: ' + e.message;
+    spokenInput.value = text;
+    spokenInput.style.borderColor = 'var(--danger)';
     aiBtn.disabled = false;
     aiBtn.textContent = '✨ Genereer';
+    document.getElementById('sendStatus').className = 'status error';
+    document.getElementById('sendStatus').textContent = 'AI-fout: ' + e.message + (e.message === 'Failed to fetch' ? ' — controleer je API key en of api.anthropic.com bereikbaar is.' : '');
   }
 }
 
