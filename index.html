@@ -471,8 +471,8 @@
       <p class="card-sub">Verbind met je Google-account dat gekoppeld is aan Google Classroom als leraar.</p>
 
       <div class="field">
-        <label>OpenAI API Key (voor AI-feedback)</label>
-        <input type="text" id="openaiKey" placeholder="sk-..." autocomplete="off">
+        <label>Anthropic API Key (voor AI-feedback via Claude)</label>
+        <input type="text" id="openaiKey" placeholder="sk-ant-..." autocomplete="off">
       </div>
 
       <label>Jouw Client ID</label>
@@ -825,31 +825,29 @@ async function generateFeedback(studentName) {
   aiBtn.textContent = '⏳ Genereren...';
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-sonnet-4-6',
+        max_tokens: 300,
+        system: 'Je bent een leraar die professionele, constructieve feedback schrijft voor leerlingen. Schrijf de feedback in het Nederlands, direct gericht aan de leerling (gebruik "jij/je"). De feedback is 2-4 zinnen, eerlijk en specifiek. Geen aanhef of ondertekening.',
         messages: [
-          {
-            role: 'system',
-            content: 'Je bent een leraar die professionele, constructieve feedback schrijft voor leerlingen. Schrijf de feedback in het Nederlands, direct gericht aan de leerling (gebruik "jij/je"). De feedback is 2-4 zinnen, eerlijk en specifiek. Geen aanhef of ondertekening.'
-          },
           {
             role: 'user',
             content: `Schrijf feedback voor ${studentName} op basis van deze notities: "${spokenTranscript}"`
           }
-        ],
-        max_tokens: 200,
-        temperature: 0.7
+        ]
       })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
-    const feedback = data.choices[0].message.content.trim();
+    const feedback = data.content[0].text.trim();
     noteEl.value = feedback;
     spokenTranscript = '';
     spokenEl.textContent = '';
