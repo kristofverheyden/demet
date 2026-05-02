@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>DemetExpert</title>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -536,25 +539,45 @@
 <footer>DemetExpert &mdash; Powered by Google Classroom &amp; Claude AI</footer>
 
 <script>
+// ── Firebase ────────────────────────────────────────────────
+firebase.initializeApp({
+  apiKey: "AIzaSyCaePFmWXpUVJY3N9UcZDsLNDej0iCze7I",
+  authDomain: "demetexpert.firebaseapp.com",
+  projectId: "demetexpert",
+  storageBucket: "demetexpert.firebasestorage.app",
+  messagingSenderId: "583344029947",
+  appId: "1:583344029947:web:79d422e148347b8159b05e"
+});
+const fbAuth = firebase.auth();
+const db    = firebase.firestore();
+
+// ── App globals ─────────────────────────────────────────────
 const CLIENT_ID = '11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com';
 const ANTHROPIC_KEY = atob('c2stYW50LWFwaTAzLXE3X25tQV8xUnQ3MVNZMjZ4Q3VRdFNub3Y2dTZqTGVZX2tOc19IbDZLNHF1SFZRT3RYY0NyVG9wdV91NUUyMFFjNFNNTWhZYWJ6VHhYbU82VUNfajBRLWZOekhZd0FB');
-const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly https://www.googleapis.com/auth/classroom.topics.readonly https://www.googleapis.com/auth/drive.appdata';
+const CLASSROOM_SCOPES = [
+  'https://www.googleapis.com/auth/classroom.coursework.students',
+  'https://www.googleapis.com/auth/classroom.courses.readonly',
+  'https://www.googleapis.com/auth/classroom.rosters.readonly',
+  'https://www.googleapis.com/auth/classroom.topics.readonly'
+];
 let accessToken = null;
 let students = [];
 let studentData = [];
-let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '', driveFileId: null };
+let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
+let cachedPrompts = [];
 
-// Herstel token na paginavernieuwing
-(function restoreSession() {
+// Herstel sessie via Firebase Auth
+fbAuth.onAuthStateChanged(async user => {
+  if (!user) return;
   const token = localStorage.getItem('demetToken');
   const expiry = parseInt(localStorage.getItem('demetTokenExpiry') || '0');
   if (token && Date.now() < expiry) {
     accessToken = token;
-    // Wacht tot DOM klaar is, laad dan direct
-    document.addEventListener('DOMContentLoaded', () => loadCourses());
+    await loadCourses();
   }
-})();
+  // Token verlopen → wacht op handmatige login
+});
 
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -567,7 +590,7 @@ function showPage(id) {
   }
   if (id === 'page-home') updateContextBar();
   if (id === 'page-settings') loadSettingsUI();
-  if (id === 'page-settings-prompt') refreshPromptDropdown();
+  if (id === 'page-settings-prompt') loadPromptsFromFirestore().then(() => refreshPromptDropdown());
   if (id === 'page-setup') populateSetupCourses();
 }
 
@@ -583,11 +606,24 @@ function updateContextBar() {
 }
 
 // ── Prompt beheer ──────────────────────────────────────────
-function getPrompts() {
-  try { return JSON.parse(localStorage.getItem('demetPrompts') || '[]'); } catch { return []; }
-}
-function savePrompts(arr) {
-  localStorage.setItem('demetPrompts', JSON.stringify(arr));
+function getPrompts() { return cachedPrompts; }
+
+async function loadPromptsFromFirestore() {
+  const uid = fbAuth.currentUser?.uid;
+  if (!uid) return;
+  try {
+    const [ownSnap, pubSnap] = await Promise.all([
+      db.collection('prompts').where('userId', '==', uid).get(),
+      db.collection('prompts').where('visibility', '==', 'openbaar').get()
+    ]);
+    const map = new Map();
+    ownSnap.forEach(d => map.set(d.id, { firestoreId: d.id, ...d.data() }));
+    pubSnap.forEach(d => { if (!map.has(d.id)) map.set(d.id, { firestoreId: d.id, ...d.data() }); });
+    cachedPrompts = [...map.values()];
+    localStorage.setItem('demetPrompts', JSON.stringify(cachedPrompts));
+  } catch (e) {
+    cachedPrompts = JSON.parse(localStorage.getItem('demetPrompts') || '[]');
+  }
 }
 function getSelectedPromptIndex() {
   const sel = document.getElementById('settingPromptSelect');
@@ -644,40 +680,50 @@ function clearPromptText() {
   autoResize(ta);
 }
 
-function newPrompt() {
-  const prompts = getPrompts();
-  prompts.push({ name: 'Nieuwe prompt', text: '', visibility: 'prive' });
-  savePrompts(prompts);
-  refreshPromptDropdown(prompts.length - 1);
+async function newPrompt() {
+  const uid = fbAuth.currentUser?.uid;
+  if (!uid) return;
+  const data = { name: 'Nieuwe prompt', text: '', visibility: 'prive', userId: uid,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+  const ref = await db.collection('prompts').add(data);
+  cachedPrompts.push({ firestoreId: ref.id, ...data });
+  localStorage.setItem('demetPrompts', JSON.stringify(cachedPrompts));
+  refreshPromptDropdown(cachedPrompts.length - 1);
 }
 
-function saveCurrentPrompt() {
-  const prompts = getPrompts();
+async function saveCurrentPrompt() {
+  const uid = fbAuth.currentUser?.uid;
+  if (!uid) return;
   const i = getSelectedPromptIndex();
   const name = document.getElementById('settingPromptName').value.trim();
   const text = document.getElementById('settingPromptText').value.trim();
   const visibility = document.getElementById('settingPromptVisibility').value;
   if (!name) { showStatus('promptStatus', 'Geef de prompt een naam.', 'error'); return; }
-  if (i >= 0 && prompts[i]) {
-    prompts[i] = { name, text, visibility };
-    savePrompts(prompts);
+  const update = { name, text, visibility, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+  if (i >= 0 && cachedPrompts[i]) {
+    const fid = cachedPrompts[i].firestoreId;
+    await db.collection('prompts').doc(fid).update(update);
+    cachedPrompts[i] = { ...cachedPrompts[i], ...update };
     refreshPromptDropdown(i);
   } else {
-    prompts.push({ name, text, visibility });
-    savePrompts(prompts);
-    refreshPromptDropdown(prompts.length - 1);
+    const data = { ...update, userId: uid, createdAt: firebase.firestore.FieldValue.serverTimestamp() };
+    const ref = await db.collection('prompts').add(data);
+    cachedPrompts.push({ firestoreId: ref.id, ...data });
+    refreshPromptDropdown(cachedPrompts.length - 1);
   }
+  localStorage.setItem('demetPrompts', JSON.stringify(cachedPrompts));
   showStatus('promptStatus', 'Prompt opgeslagen.', 'success');
   setTimeout(() => document.getElementById('promptStatus').className = 'status', 2500);
 }
 
-function deleteCurrentPrompt() {
-  const prompts = getPrompts();
+async function deleteCurrentPrompt() {
   const i = getSelectedPromptIndex();
-  if (i < 0 || !prompts[i]) return;
-  if (!confirm(`Prompt "${prompts[i].name}" verwijderen?`)) return;
-  prompts.splice(i, 1);
-  savePrompts(prompts);
+  if (i < 0 || !cachedPrompts[i]) return;
+  if (!confirm(`Prompt "${cachedPrompts[i].name}" verwijderen?`)) return;
+  const fid = cachedPrompts[i].firestoreId;
+  if (fid) await db.collection('prompts').doc(fid).delete();
+  cachedPrompts.splice(i, 1);
+  localStorage.setItem('demetPrompts', JSON.stringify(cachedPrompts));
   refreshPromptDropdown();
 }
 
@@ -696,51 +742,29 @@ function saveSettings() {
 }
 
 // ── Google Drive prefs ─────────────────────────────────────
-async function loadPreferencesFromDrive() {
+async function loadPreferencesFromFirestore() {
+  const uid = fbAuth.currentUser?.uid;
+  if (!uid) return;
   try {
-    const listRes = await fetch(
-      "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'demet-prefs.json'&fields=files(id)",
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const listData = await listRes.json();
-    const files = listData.files || [];
-    if (!files.length) return;
-    const fileId = files[0].id;
-    const fileRes = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const prefs = await fileRes.json();
-    userPrefs = { ...userPrefs, ...prefs, driveFileId: fileId };
-    savePrefsLocally();
+    const doc = await db.collection('users').doc(uid).get();
+    if (doc.exists) {
+      const d = doc.data();
+      userPrefs = { ...userPrefs, courseId: d.courseId||'', courseName: d.courseName||'',
+        topicId: d.topicId||'', topicName: d.topicName||'' };
+      savePrefsLocally();
+    }
   } catch (e) {}
 }
 
-async function savePreferencesToDrive() {
-  const body = JSON.stringify({
-    courseId: userPrefs.courseId,
-    courseName: userPrefs.courseName,
-    topicId: userPrefs.topicId,
-    topicName: userPrefs.topicName
-  });
+async function savePreferencesToFirestore() {
+  const uid = fbAuth.currentUser?.uid;
+  if (!uid) return;
   try {
-    if (userPrefs.driveFileId) {
-      await fetch(
-        `https://www.googleapis.com/upload/drive/v3/files/${userPrefs.driveFileId}?uploadType=media`,
-        { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body }
-      );
-    } else {
-      const meta = JSON.stringify({ name: 'demet-prefs.json', parents: ['appDataFolder'] });
-      const form = new FormData();
-      form.append('metadata', new Blob([meta], { type: 'application/json' }));
-      form.append('file', new Blob([body], { type: 'application/json' }));
-      const res = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
-        { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
-      );
-      const d = await res.json();
-      userPrefs.driveFileId = d.id;
-    }
+    await db.collection('users').doc(uid).set({
+      courseId: userPrefs.courseId, courseName: userPrefs.courseName,
+      topicId: userPrefs.topicId, topicName: userPrefs.topicName,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
   } catch (e) {}
 }
 
@@ -802,7 +826,7 @@ async function confirmSetup() {
   userPrefs = { ...userPrefs, courseId, courseName, topicId, topicName };
   savePrefsLocally();
   showStatus('setupStatus', 'Opslaan...', 'success');
-  await savePreferencesToDrive();
+  await savePreferencesToFirestore();
   showPage('page-home');
 }
 
@@ -834,31 +858,22 @@ function initTextareas() {
   document.querySelectorAll('textarea').forEach(autoResize);
 }
 
-function startLogin() {
-  const redirectUri = encodeURIComponent(window.location.origin + window.location.pathname);
-  const scope = encodeURIComponent(SCOPES);
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}&prompt=consent`;
-  const popup = window.open(url, 'google-login', 'width=520,height=640,left=200,top=100');
-  showStatus('loginStatus', 'Wacht op Google-login...', 'success');
-  const timer = setInterval(() => {
-    try {
-      if (!popup || popup.closed) { clearInterval(timer); return; }
-      const hash = popup.location.hash;
-      if (hash && hash.includes('access_token')) {
-        clearInterval(timer);
-        popup.close();
-        const params = new URLSearchParams(hash.substring(1));
-        accessToken = params.get('access_token');
-        const expiresIn = parseInt(params.get('expires_in') || '3600');
-        if (accessToken) {
-          localStorage.setItem('demetToken', accessToken);
-          localStorage.setItem('demetTokenExpiry', Date.now() + expiresIn * 1000);
-          showStatus('loginStatus', 'Ingelogd! Klassen worden opgehaald...', 'success');
-          setTimeout(loadCourses, 600);
-        }
-      }
-    } catch (e) {}
-  }, 400);
+async function startLogin() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  CLASSROOM_SCOPES.forEach(s => provider.addScope(s));
+  provider.setCustomParameters({ prompt: 'consent' });
+  try {
+    showStatus('loginStatus', 'Wacht op Google-login...', 'success');
+    const result = await fbAuth.signInWithPopup(provider);
+    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+    accessToken = credential.accessToken;
+    localStorage.setItem('demetToken', accessToken);
+    localStorage.setItem('demetTokenExpiry', Date.now() + 3600 * 1000);
+    showStatus('loginStatus', 'Ingelogd! Klassen worden opgehaald...', 'success');
+    await loadCourses();
+  } catch (e) {
+    showStatus('loginStatus', 'Login mislukt: ' + e.message, 'error');
+  }
 }
 
 async function loadCourses() {
@@ -872,12 +887,12 @@ async function loadCourses() {
       showStatus('loginStatus', 'Geen actieve klassen gevonden als leraar.', 'error');
       return;
     }
-    // Laad prefs: eerst localStorage (direct), dan Drive (backup voor ander toestel)
+    // Laad prefs: eerst localStorage (direct), dan Firestore (cross-device sync)
     const local = JSON.parse(localStorage.getItem('demetLocalPrefs') || 'null');
     if (local && local.courseId && local.topicId) {
       userPrefs = { ...userPrefs, ...local };
     }
-    await loadPreferencesFromDrive();
+    await loadPreferencesFromFirestore();
     if (userPrefs.courseId && userPrefs.topicId) {
       showPage('page-home');
     } else {
