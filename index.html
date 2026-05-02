@@ -489,7 +489,7 @@
 <script>
 const CLIENT_ID = '11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com';
 const ANTHROPIC_KEY = atob('c2stYW50LWFwaTAzLXE3X25tQV8xUnQ3MVNZMjZ4Q3VRdFNub3Y2dTZqTGVZX2tOc19IbDZLNHF1SFZRT3RYY0NyVG9wdV91NUUyMFFjNFNNTWhZYWJ6VHhYbU82VUNfajBRLWZOekhZd0FB');
-const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly https://www.googleapis.com/auth/classroom.topics.readonly';
 let accessToken = null;
 let students = [];
 let studentData = [];
@@ -692,20 +692,43 @@ async function loadAssignments() {
   if (!courseId) { sel.innerHTML = '<option value="">Selecteer eerst een klas</option>'; return; }
   sel.innerHTML = '<option>Laden...</option>';
   try {
-    const res = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork?orderBy=updateTime+desc`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    const data = await res.json();
-    const works = (data.courseWork || []).filter(w => w.workType === 'ASSIGNMENT');
+    const [worksRes, topicsRes] = await Promise.all([
+      fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork?orderBy=updateTime+desc`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      }),
+      fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/topics?pageSize=100`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      })
+    ]);
+    const worksData = await worksRes.json();
+    const topicsData = await topicsRes.json();
+
+    const topicMap = {};
+    (topicsData.topic || []).forEach(t => { topicMap[t.topicId] = t.name; });
+
+    let works = (worksData.courseWork || []).filter(w => w.workType === 'ASSIGNMENT');
+
+    // Filter op woorden uit instellingen Verdeling > Feedback schrijven
+    const settings = loadSettings();
+    const filterWords = (settings.verdelingFeedback || '')
+      .split(/[\s,;]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+    if (filterWords.length) {
+      works = works.filter(w => {
+        const topicName = (topicMap[w.topicId] || '').toLowerCase();
+        return filterWords.some(fw => topicName.includes(fw));
+      });
+    }
+
     if (!works.length) {
-      sel.innerHTML = '<option value="">Geen gradeerbare taken gevonden</option>';
+      sel.innerHTML = '<option value="">Geen taken gevonden voor dit filter</option>';
       return;
     }
     sel.innerHTML = '<option value="">Kies een taak...</option>';
     works.forEach(w => {
       const opt = document.createElement('option');
       opt.value = w.id;
-      opt.textContent = w.title;
+      const topic = topicMap[w.topicId];
+      opt.textContent = topic ? `${topic}: ${w.title}` : w.title;
       sel.appendChild(opt);
     });
   } catch (e) {
