@@ -1008,6 +1008,7 @@ Geen lange paragrafen, wel duidelijke structuur.
 Missions zijn altijd verbeterpunten, Medals altijd positief.
 Geen herhaling tussen Medals en Missions.`;
 
+  try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
