@@ -96,6 +96,21 @@
     margin-top: 0.5rem;
   }
 
+  /* Instellingen */
+  .settings-section {
+    margin-bottom: 1.5rem;
+  }
+  .settings-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
   .dash-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -305,7 +320,7 @@
   <!-- Startpagina -->
   <div class="page" id="page-home">
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem">Kies een module om te starten.</p>
-    <div class="dashboard-grid">
+    <div class="dashboard-grid" style="grid-template-columns:1fr 1fr 1fr">
       <div class="dash-card disabled">
         <div class="dash-icon">📅</div>
         <div class="dash-title">Tijdens de sessie</div>
@@ -315,6 +330,11 @@
         <div class="dash-icon">✏️</div>
         <div class="dash-title">Feedback schrijven</div>
         <div class="dash-desc">Geef feedback op taken via Google Classroom met AI-ondersteuning</div>
+      </div>
+      <div class="dash-card" onclick="showPage('page-settings')">
+        <div class="dash-icon">⚙️</div>
+        <div class="dash-title">Instellingen</div>
+        <div class="dash-desc">Beheer prompts, verdelingen en Classroom-opties</div>
       </div>
     </div>
   </div>
@@ -362,6 +382,52 @@
     </div>
   </div>
 
+  <!-- Instellingenpagina -->
+  <div class="page" id="page-settings">
+    <button class="btn-back" onclick="showPage('page-home')">← Terug naar startpagina</button>
+
+    <div class="card">
+      <div class="card-title">Instellingen</div>
+      <p class="card-sub">Beheer je prompts, verdelingen en Classroom-opties.</p>
+
+      <!-- Sectie: Prompt -->
+      <div class="settings-section">
+        <div class="settings-section-title">Prompt</div>
+        <div class="field">
+          <label>Naam</label>
+          <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback" value="TJ Feedback">
+        </div>
+        <div class="field">
+          <label>Prompttekst</label>
+          <textarea id="settingPromptText" style="min-height:160px" placeholder="Schrijf hier de instructies voor de AI..."></textarea>
+        </div>
+      </div>
+
+      <!-- Sectie: Verdeling -->
+      <div class="settings-section">
+        <div class="settings-section-title">Verdeling</div>
+        <div class="field">
+          <label>Instelling verdeling</label>
+          <input type="text" id="settingVerdeling" placeholder="Binnenkort beschikbaar">
+        </div>
+      </div>
+
+      <!-- Sectie: Classroom -->
+      <div class="settings-section">
+        <div class="settings-section-title">Classroom</div>
+        <div class="field">
+          <label>Instelling Classroom</label>
+          <input type="text" id="settingClassroom" placeholder="Binnenkort beschikbaar">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="primary" onclick="saveSettings()">Opslaan</button>
+      </div>
+      <div class="status" id="settingsStatus"></div>
+    </div>
+  </div>
+
 </div>
 
 <footer>DemetExpert &mdash; Powered by Google Classroom &amp; Claude AI</footer>
@@ -381,6 +447,30 @@ function showPage(id) {
     document.getElementById('studentSection').style.display = 'none';
     document.getElementById('selectStatus').className = 'status';
   }
+  if (id === 'page-settings') loadSettingsUI();
+}
+
+function loadSettingsUI() {
+  const s = loadSettings();
+  document.getElementById('settingPromptName').value = s.promptName;
+  document.getElementById('settingPromptText').value = s.promptText;
+  setTimeout(() => autoResize(document.getElementById('settingPromptText')), 0);
+}
+
+function loadSettings() {
+  try {
+    return JSON.parse(localStorage.getItem('demetSettings') || '{}');
+  } catch { return {}; }
+}
+
+function saveSettings() {
+  const s = {
+    promptName: document.getElementById('settingPromptName').value.trim(),
+    promptText: document.getElementById('settingPromptText').value.trim(),
+  };
+  localStorage.setItem('demetSettings', JSON.stringify(s));
+  showStatus('settingsStatus', 'Instellingen opgeslagen.', 'success');
+  setTimeout(() => document.getElementById('settingsStatus').className = 'status', 2500);
 }
 
 function showStatus(id, msg, type) {
