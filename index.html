@@ -719,6 +719,12 @@ async function loadAssignments() {
       });
     }
 
+    works.sort((a, b) => {
+      const ta = topicMap[a.topicId] || '';
+      const tb = topicMap[b.topicId] || '';
+      return ta.localeCompare(tb, 'nl') || a.title.localeCompare(b.title, 'nl');
+    });
+
     if (!works.length) {
       sel.innerHTML = '<option value="">Geen taken gevonden voor dit filter</option>';
       return;
