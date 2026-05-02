@@ -506,15 +506,22 @@
         </div>
       </div>
       <div class="field">
+        <label>Naam van deze prompt</label>
+        <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback">
+      </div>
+      <div class="field">
+        <label>Zichtbaarheid</label>
+        <select id="settingPromptVisibility">
+          <option value="prive">🔒 Privé — enkel voor mij zichtbaar</option>
+          <option value="openbaar">🌐 Openbaar — zichtbaar voor alle gebruikers</option>
+        </select>
+      </div>
+      <div class="field">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <label style="margin-bottom:0">Prompttekst</label>
           <button onclick="clearPromptText()" style="font-size:12px;padding:4px 10px">Leegmaken</button>
         </div>
         <textarea id="settingPromptText" style="min-height:120px" placeholder="Schrijf hier de instructies voor de AI..."></textarea>
-      </div>
-      <div class="field">
-        <label>Naam van deze prompt</label>
-        <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback">
       </div>
       <div class="btn-row" style="margin-top:0.5rem">
         <button class="primary" onclick="saveCurrentPrompt()">Prompt opslaan</button>
@@ -594,30 +601,40 @@ function loadSettingsUI() {
 function refreshPromptDropdown(selectIndex) {
   const prompts = getPrompts();
   const sel = document.getElementById('settingPromptSelect');
-  sel.innerHTML = '';
-  if (!prompts.length) {
-    sel.innerHTML = '<option value="">Geen prompts — maak een nieuwe aan</option>';
-    document.getElementById('settingPromptName').value = '';
-    document.getElementById('settingPromptText').value = '';
-    return;
-  }
+  if (!sel) return;
+  // Altijd beginnen met lege keuze
+  sel.innerHTML = '<option value="">— Kies een prompt —</option>';
   prompts.forEach((p, i) => {
     const opt = document.createElement('option');
     opt.value = i;
-    opt.textContent = p.name;
+    opt.textContent = (p.visibility === 'openbaar' ? '🌐 ' : '🔒 ') + p.name;
     sel.appendChild(opt);
   });
-  const idx = selectIndex !== undefined ? selectIndex : 0;
-  sel.value = idx;
-  onPromptSelect();
+  if (selectIndex !== undefined && selectIndex >= 0) {
+    sel.value = selectIndex;
+    onPromptSelect();
+  } else {
+    // Geen automatische selectie: velden leegmaken
+    document.getElementById('settingPromptName').value = '';
+    document.getElementById('settingPromptText').value = '';
+    document.getElementById('settingPromptVisibility').value = 'prive';
+    autoResize(document.getElementById('settingPromptText'));
+  }
 }
 
 function onPromptSelect() {
   const prompts = getPrompts();
   const i = getSelectedPromptIndex();
-  if (i < 0 || !prompts[i]) return;
+  if (i < 0 || !prompts[i]) {
+    document.getElementById('settingPromptName').value = '';
+    document.getElementById('settingPromptText').value = '';
+    document.getElementById('settingPromptVisibility').value = 'prive';
+    autoResize(document.getElementById('settingPromptText'));
+    return;
+  }
   document.getElementById('settingPromptName').value = prompts[i].name;
   document.getElementById('settingPromptText').value = prompts[i].text;
+  document.getElementById('settingPromptVisibility').value = prompts[i].visibility || 'prive';
   setTimeout(() => autoResize(document.getElementById('settingPromptText')), 0);
 }
 
@@ -629,7 +646,7 @@ function clearPromptText() {
 
 function newPrompt() {
   const prompts = getPrompts();
-  prompts.push({ name: 'Nieuwe prompt', text: '' });
+  prompts.push({ name: 'Nieuwe prompt', text: '', visibility: 'prive' });
   savePrompts(prompts);
   refreshPromptDropdown(prompts.length - 1);
 }
@@ -639,13 +656,14 @@ function saveCurrentPrompt() {
   const i = getSelectedPromptIndex();
   const name = document.getElementById('settingPromptName').value.trim();
   const text = document.getElementById('settingPromptText').value.trim();
+  const visibility = document.getElementById('settingPromptVisibility').value;
   if (!name) { showStatus('promptStatus', 'Geef de prompt een naam.', 'error'); return; }
   if (i >= 0 && prompts[i]) {
-    prompts[i] = { name, text };
+    prompts[i] = { name, text, visibility };
     savePrompts(prompts);
     refreshPromptDropdown(i);
   } else {
-    prompts.push({ name, text });
+    prompts.push({ name, text, visibility });
     savePrompts(prompts);
     refreshPromptDropdown(prompts.length - 1);
   }
@@ -660,7 +678,7 @@ function deleteCurrentPrompt() {
   if (!confirm(`Prompt "${prompts[i].name}" verwijderen?`)) return;
   prompts.splice(i, 1);
   savePrompts(prompts);
-  refreshPromptDropdown(0);
+  refreshPromptDropdown();
 }
 
 function toggleHelp(id) {
