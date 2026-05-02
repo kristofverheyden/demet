@@ -725,6 +725,7 @@ Geen herhaling tussen Medals en Missions.`,
     }
     const data = await res.json();
     noteEl.value = data.content[0].text.trim();
+    autoResize(noteEl);
     aiBtn.textContent = '✨ Genereer';
     aiBtn.disabled = false;
   } catch (e) {
