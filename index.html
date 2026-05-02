@@ -719,10 +719,25 @@ async function loadAssignments() {
       });
     }
 
+    function topicSortKey(name) {
+      const m = name.match(/^(\d+)/);
+      return m ? parseInt(m[1]) : null;
+    }
     works.sort((a, b) => {
       const ta = topicMap[a.topicId] || '';
       const tb = topicMap[b.topicId] || '';
-      const topicCmp = tb.localeCompare(ta, 'nl', { numeric: true, sensitivity: 'base' });
+      const na = topicSortKey(ta);
+      const nb = topicSortKey(tb);
+      // Beide beginnen met een getal → hoogste eerst
+      if (na !== null && nb !== null) {
+        if (nb !== na) return nb - na;
+      } else if (na !== null) {
+        return -1; // Getal gaat voor letters
+      } else if (nb !== null) {
+        return 1;
+      }
+      // Beide alfabetisch → omgekeerd alfabetisch
+      const topicCmp = tb.localeCompare(ta, 'nl', { sensitivity: 'base' });
       if (topicCmp !== 0) return topicCmp;
       // Binnen hetzelfde onderwerp: hoogste nummer eerst
       return b.title.localeCompare(a.title, 'nl', { numeric: true, sensitivity: 'base' });
