@@ -722,7 +722,10 @@ async function loadAssignments() {
     works.sort((a, b) => {
       const ta = topicMap[a.topicId] || '';
       const tb = topicMap[b.topicId] || '';
-      return ta.localeCompare(tb, 'nl') || a.title.localeCompare(b.title, 'nl');
+      const topicCmp = ta.localeCompare(tb, 'nl', { numeric: true, sensitivity: 'base' });
+      if (topicCmp !== 0) return topicCmp;
+      // Binnen hetzelfde onderwerp: hoogste nummer eerst
+      return b.title.localeCompare(a.title, 'nl', { numeric: true, sensitivity: 'base' });
     });
 
     if (!works.length) {
