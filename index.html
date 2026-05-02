@@ -1006,17 +1006,31 @@ async function loadStudents() {
 
   showStatus('selectStatus', 'Leerlingen ophalen...', 'success');
   try {
-    const res = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/students?pageSize=100`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    const data = await res.json();
-    students = data.students || [];
+    const [studRes, subRes] = await Promise.all([
+      fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/students?pageSize=100`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }),
+      fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?pageSize=100`,
+        { headers: { Authorization: `Bearer ${accessToken}` } })
+    ]);
+    const studData = await studRes.json();
+    const subData  = await subRes.json();
+
+    students = studData.students || [];
     if (!students.length) {
       showStatus('selectStatus', 'Geen leerlingen gevonden in deze klas.', 'error');
       return;
     }
     students.sort((a, b) => a.profile.name.fullName.localeCompare(b.profile.name.fullName, 'nl'));
-    studentData = students.map(() => ({ note: '', sent: false }));
+
+    // Bouw map userId → submission
+    const subMap = {};
+    (subData.studentSubmissions || []).forEach(s => { subMap[s.userId] = s; });
+
+    studentData = students.map(s => {
+      const sub = subMap[s.userId];
+      const hasGrade = sub && (sub.draftGrade != null || sub.assignedGrade != null);
+      return { note: '', sent: !!hasGrade, submissionId: sub?.id || null };
+    });
     spokenTranscript = '';
 
     const sel = document.getElementById('studentSelect');
@@ -1024,7 +1038,7 @@ async function loadStudents() {
     students.forEach((s, i) => {
       const opt = document.createElement('option');
       opt.value = i;
-      opt.textContent = s.profile.name.fullName;
+      opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName;
       sel.appendChild(opt);
     });
 
@@ -1301,25 +1315,30 @@ async function sendCurrentFeedback() {
   saveCurrentStudent();
   const i = parseInt(document.getElementById('studentSelect').value);
   const d = studentData[i];
-  const courseId = document.getElementById('courseSelect').value;
+  const courseId = userPrefs.courseId;
   const assignmentId = document.getElementById('assignmentSelect').value;
   const btn = document.getElementById('sendBtn');
   btn.innerHTML = '<span class="spinner"></span>Versturen...';
   btn.disabled = true;
 
   try {
-    const subRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?pageSize=100`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-    const subData = await subRes.json();
-    if (subData.error) throw new Error(`API-fout: ${subData.error.message}`);
-
-    const submission = (subData.studentSubmissions || []).find(s => s.userId === students[i].userId);
-    if (!submission) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
+    // Haal submissionId op als we die nog niet hebben
+    if (!d.submissionId) {
+      const subRes = await fetch(
+        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions?pageSize=100`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const subData = await subRes.json();
+      if (subData.error) throw new Error(`API-fout: ${subData.error.message}`);
+      const sub = (subData.studentSubmissions || []).find(s => s.userId === students[i].userId);
+      if (!sub) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
+      d.submissionId = sub.id;
+    }
+    const submissionId = d.submissionId;
+    if (!submissionId) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
 
     const patchRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}?updateMask=draftGrade`,
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}?updateMask=draftGrade`,
       {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -1332,7 +1351,7 @@ async function sendCurrentFeedback() {
     }
 
     const returnRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submission.id}:return`,
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}:return`,
       { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
     );
     if (!returnRes.ok) {
