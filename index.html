@@ -466,53 +466,56 @@
     </div>
   </div>
 
-  <!-- Instellingenpagina -->
+  <!-- Instellingenpagina (dashboard) -->
   <div class="page" id="page-settings">
     <button class="btn-back" onclick="showPage('page-home')">← Terug naar startpagina</button>
 
+    <p style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem">Kies een onderdeel om aan te passen.</p>
+    <div class="dashboard-grid">
+      <div class="dash-card disabled">
+        <div class="dash-icon">🎓</div>
+        <div class="dash-title">Coach van leerlingen en mails</div>
+        <div class="dash-desc">Binnenkort beschikbaar</div>
+      </div>
+      <div class="dash-card" onclick="showPage('page-settings-prompt')">
+        <div class="dash-icon">📝</div>
+        <div class="dash-title">Prompt</div>
+        <div class="dash-desc">Herschrijf een bestaande prompt of voeg een nieuwe toe</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instellingen: Prompt subpagina -->
+  <div class="page" id="page-settings-prompt">
+    <button class="btn-back" onclick="showPage('page-settings')">← Terug naar instellingen</button>
+
     <div class="card">
-      <div class="card-title">Instellingen</div>
-      <p class="card-sub">Beheer je prompts en werkruimte.</p>
+      <div class="card-title">Prompt</div>
+      <p class="card-sub">Herschrijf een bestaande prompt of voeg een nieuwe toe.</p>
 
-      <!-- Sectie: Prompt -->
-      <div class="settings-section">
-        <div class="settings-section-title">Prompt</div>
-        <div class="field">
-          <label>Kies prompt</label>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select id="settingPromptSelect" onchange="onPromptSelect()" style="flex:1"></select>
-            <button onclick="newPrompt()" style="white-space:nowrap">+ Nieuwe prompt</button>
-          </div>
+      <div class="field">
+        <label>Kies prompt</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="settingPromptSelect" onchange="onPromptSelect()" style="flex:1"></select>
+          <button onclick="newPrompt()" style="white-space:nowrap">+ Nieuwe prompt</button>
         </div>
-        <div class="field">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <label style="margin-bottom:0">Prompttekst</label>
-            <button onclick="clearPromptText()" style="font-size:12px;padding:4px 10px">Leegmaken</button>
-          </div>
-          <textarea id="settingPromptText" style="min-height:120px" placeholder="Schrijf hier de instructies voor de AI..."></textarea>
-        </div>
-        <div class="field">
-          <label>Naam van deze prompt</label>
-          <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback">
-        </div>
-        <div class="btn-row" style="margin-top:0.5rem">
-          <button class="primary" onclick="saveCurrentPrompt()">Prompt opslaan</button>
-          <button onclick="deleteCurrentPrompt()" style="color:var(--danger);border-color:var(--danger)">Verwijderen</button>
-        </div>
-        <div class="status" id="promptStatus"></div>
       </div>
-
-      <!-- Sectie: Klas en onderwerp -->
-      <div class="settings-section">
-        <div class="settings-section-title">Klas en onderwerp</div>
-        <div class="field">
-          <label>Actieve werkruimte</label>
-          <div id="settingsContextLabel" style="font-size:14px;padding:10px 0;color:var(--text-muted)">—</div>
+      <div class="field">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <label style="margin-bottom:0">Prompttekst</label>
+          <button onclick="clearPromptText()" style="font-size:12px;padding:4px 10px">Leegmaken</button>
         </div>
-        <button onclick="showPage('page-setup')">Wijzigen</button>
+        <textarea id="settingPromptText" style="min-height:120px" placeholder="Schrijf hier de instructies voor de AI..."></textarea>
       </div>
-
-      <div class="status" id="settingsStatus"></div>
+      <div class="field">
+        <label>Naam van deze prompt</label>
+        <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback">
+      </div>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="primary" onclick="saveCurrentPrompt()">Prompt opslaan</button>
+        <button onclick="deleteCurrentPrompt()" style="color:var(--danger);border-color:var(--danger)">Verwijderen</button>
+      </div>
+      <div class="status" id="promptStatus"></div>
     </div>
   </div>
 
@@ -552,6 +555,7 @@ function showPage(id) {
   }
   if (id === 'page-home') updateContextBar();
   if (id === 'page-settings') loadSettingsUI();
+  if (id === 'page-settings-prompt') refreshPromptDropdown();
   if (id === 'page-setup') populateSetupCourses();
 }
 
@@ -579,13 +583,7 @@ function getSelectedPromptIndex() {
 }
 
 function loadSettingsUI() {
-  const label = document.getElementById('settingsContextLabel');
-  if (label) {
-    label.innerHTML = userPrefs.courseId
-      ? `<strong>${userPrefs.courseName}</strong> &nbsp;·&nbsp; ${userPrefs.topicName}`
-      : 'Nog geen werkruimte gekozen.';
-  }
-  refreshPromptDropdown();
+  // Niets meer te laden op het dashboard zelf
 }
 
 function refreshPromptDropdown(selectIndex) {
