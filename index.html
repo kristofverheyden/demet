@@ -1060,7 +1060,7 @@ function saveCurrentStudent() {
   if (spokenEl) spokenTranscript = spokenEl.value.trim();
 }
 
-function showStudent(index) {
+async function showStudent(index) {
   saveCurrentStudent();
   index = parseInt(index);
   document.getElementById('studentSelect').value = index;
@@ -1086,7 +1086,7 @@ function showStudent(index) {
     </div>
     ` : ''}
     <label>Feedback</label>
-    <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
+    <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'readonly' : ''}>${d.note}</textarea>
   `;
 
   const btn = document.getElementById('sendBtn');
@@ -1094,6 +1094,27 @@ function showStudent(index) {
   btn.textContent = d.sent ? 'Verstuurd' : 'Versturen';
   document.getElementById('sendStatus').className = 'status';
   setTimeout(() => { initTextareas(); initPromptSelect(); }, 0);
+
+  // Als de leerling al feedback heeft gekregen maar de tekst nog niet geladen is, haal die op uit Firestore
+  if (d.sent && !d.note) {
+    const courseId = userPrefs.courseId;
+    const assignmentId = document.getElementById('assignmentSelect').value;
+    const userId = s.userId;
+    try {
+      const snap = await db.collection('submissions').doc(`${courseId}_${assignmentId}_${userId}`).get();
+      if (snap.exists) {
+        const savedFeedback = snap.data().feedback || '';
+        studentData[index].note = savedFeedback;
+        const noteEl = document.getElementById('current-note');
+        if (noteEl) {
+          noteEl.value = savedFeedback;
+          autoResize(noteEl);
+        }
+      }
+    } catch (e) {
+      console.warn('Feedback laden uit Firestore mislukt:', e);
+    }
+  }
 }
 
 function initPromptSelect() {
@@ -1357,6 +1378,18 @@ async function sendCurrentFeedback() {
     if (!returnRes.ok) {
       const rd = await returnRes.json();
       throw new Error(rd.error?.message || 'Fout bij terugsturen.');
+    }
+
+    // Sla feedbacktekst op in Firestore zodat die later terug gelezen kan worden
+    try {
+      const userId = students[i].userId;
+      await db.collection('submissions').doc(`${courseId}_${assignmentId}_${userId}`).set({
+        feedback: d.note,
+        sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+        teacherUid: fbAuth.currentUser?.uid || ''
+      });
+    } catch (fsErr) {
+      console.warn('Feedback opslaan in Firestore mislukt:', fsErr);
     }
 
     studentData[i].sent = true;
