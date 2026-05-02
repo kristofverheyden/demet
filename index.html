@@ -719,6 +719,7 @@ async function loadPreferencesFromDrive() {
     );
     const prefs = await fileRes.json();
     userPrefs = { ...userPrefs, ...prefs, driveFileId: fileId };
+    savePrefsLocally();
   } catch (e) {}
 }
 
@@ -806,9 +807,19 @@ async function confirmSetup() {
   const courseName = document.getElementById('setupCourseSelect').selectedOptions[0].textContent;
   const topicName = document.getElementById('setupTopicSelect').selectedOptions[0].textContent;
   userPrefs = { ...userPrefs, courseId, courseName, topicId, topicName };
+  savePrefsLocally();
   showStatus('setupStatus', 'Opslaan...', 'success');
   await savePreferencesToDrive();
   showPage('page-home');
+}
+
+function savePrefsLocally() {
+  localStorage.setItem('demetLocalPrefs', JSON.stringify({
+    courseId: userPrefs.courseId,
+    courseName: userPrefs.courseName,
+    topicId: userPrefs.topicId,
+    topicName: userPrefs.topicName
+  }));
 }
 
 function showStatus(id, msg, type) {
@@ -868,7 +879,11 @@ async function loadCourses() {
       showStatus('loginStatus', 'Geen actieve klassen gevonden als leraar.', 'error');
       return;
     }
-    // Laad opgeslagen prefs uit Drive
+    // Laad prefs: eerst localStorage (direct), dan Drive (backup voor ander toestel)
+    const local = JSON.parse(localStorage.getItem('demetLocalPrefs') || 'null');
+    if (local && local.courseId && local.topicId) {
+      userPrefs = { ...userPrefs, ...local };
+    }
     await loadPreferencesFromDrive();
     if (userPrefs.courseId && userPrefs.topicId) {
       showPage('page-home');
