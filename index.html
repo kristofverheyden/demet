@@ -887,8 +887,14 @@ async function startLogin() {
   provider.setCustomParameters({ prompt: 'consent' });
   try {
     showStatus('loginStatus', 'Wacht op Google-login...', 'success');
-    const result = await fbAuth.signInWithPopup(provider);
+    let result = await fbAuth.signInWithPopup(provider);
     accessToken = result.credential?.accessToken;
+    if (!accessToken && fbAuth.currentUser) {
+      // Credential ontbreekt (al eerder ingelogd) — forceer herautenticatie
+      const reResult = await fbAuth.currentUser.reauthenticateWithPopup(provider);
+      accessToken = reResult.credential?.accessToken;
+    }
+    if (!accessToken) throw new Error('Geen toegangstoken ontvangen van Google.');
     localStorage.setItem('demetToken', accessToken);
     localStorage.setItem('demetTokenExpiry', Date.now() + 3600 * 1000);
     showStatus('loginStatus', 'Ingelogd! Klassen worden opgehaald...', 'success');
@@ -904,6 +910,7 @@ async function loadCourses() {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Classroom API-fout');
     allCourses = data.courses || [];
     if (!allCourses.length) {
       showStatus('loginStatus', 'Geen actieve klassen gevonden als leraar.', 'error');
