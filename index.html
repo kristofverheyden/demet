@@ -407,7 +407,7 @@
       <button class="btn-change" onclick="showPage('page-setup')">Wijzigen</button>
     </div>
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem">Kies een module om te starten.</p>
-    <div class="dashboard-grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="dashboard-grid">
       <div class="dash-card disabled">
         <div class="dash-icon">📅</div>
         <div class="dash-title">Tijdens de sessie</div>
@@ -418,7 +418,9 @@
         <div class="dash-title">Feedback schrijven</div>
         <div class="dash-desc">Geef feedback op taken via Google Classroom met AI-ondersteuning</div>
       </div>
-      <div class="dash-card" onclick="showPage('page-settings')">
+    </div>
+    <div class="dashboard-grid" style="grid-template-columns:1fr;margin-top:0">
+      <div class="dash-card" onclick="showPage('page-settings')" style="max-width:calc(50% - 0.5rem)">
         <div class="dash-icon">⚙️</div>
         <div class="dash-title">Instellingen</div>
         <div class="dash-desc">Beheer prompts, verdelingen en Classroom-opties</div>
