@@ -805,9 +805,7 @@ function showStudent(index) {
     <button class="btn-mic" id="micBtn" onclick="toggleSpeech()" style="margin-bottom:8px">🎤 Inspreken</button>
     <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
     <div class="ai-row">
-      <select id="promptSelect" style="flex:1">
-        <option value="tj-feedback">TJ Feedback</option>
-      </select>
+      <select id="promptSelect" style="flex:1" onchange="savePromptForTask()"></select>
       <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" ${spokenTranscript ? '' : 'disabled'}>✨ Genereer</button>
     </div>
     ` : ''}
@@ -819,7 +817,37 @@ function showStudent(index) {
   btn.disabled = d.sent;
   btn.textContent = d.sent ? 'Verstuurd' : 'Versturen';
   document.getElementById('sendStatus').className = 'status';
-  setTimeout(initTextareas, 0);
+  setTimeout(() => { initTextareas(); initPromptSelect(); }, 0);
+}
+
+function initPromptSelect() {
+  const sel = document.getElementById('promptSelect');
+  if (!sel) return;
+  const prompts = getPrompts();
+  sel.innerHTML = '<option value="">Standaard</option>';
+  prompts.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+  // Herstel de eerder gekozen prompt voor deze taak
+  const assignmentId = document.getElementById('assignmentSelect').value;
+  const saved = getTaskPromptMap()[assignmentId];
+  if (saved !== undefined) sel.value = saved;
+}
+
+function savePromptForTask() {
+  const assignmentId = document.getElementById('assignmentSelect').value;
+  if (!assignmentId) return;
+  const sel = document.getElementById('promptSelect');
+  const map = getTaskPromptMap();
+  map[assignmentId] = sel.value;
+  localStorage.setItem('demetTaskPrompts', JSON.stringify(map));
+}
+
+function getTaskPromptMap() {
+  try { return JSON.parse(localStorage.getItem('demetTaskPrompts') || '{}'); } catch { return {}; }
 }
 
 let recognition = null;
@@ -929,19 +957,15 @@ async function generateFeedback(studentName) {
   aiBtn.disabled = true;
   aiBtn.textContent = '⏳ Genereren...';
 
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 600,
-        system: `Schrijf feedback voor een leerling op een test jezelf (TJ) volgens dit vaste format en in correct Nederlands.
+  // Bepaal welke prompttekst te gebruiken
+  const promptSel = document.getElementById('promptSelect');
+  const promptIdx = promptSel ? promptSel.value : '';
+  const prompts = getPrompts();
+  const selectedPrompt = (promptIdx !== '' && prompts[parseInt(promptIdx)])
+    ? prompts[parseInt(promptIdx)].text
+    : null;
+
+  const defaultSystemPrompt = `Schrijf feedback voor een leerling op een test jezelf (TJ) volgens dit vaste format en in correct Nederlands.
 
 Structuur (altijd exact volgen):
 
@@ -976,7 +1000,20 @@ Schrijf in duidelijke, eenvoudige leerkrachtentaal.
 Wees positief maar eerlijk.
 Geen lange paragrafen, wel duidelijke structuur.
 Missions zijn altijd verbeterpunten, Medals altijd positief.
-Geen herhaling tussen Medals en Missions.`,
+Geen herhaling tussen Medals en Missions.`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600,
+        system: selectedPrompt || defaultSystemPrompt,
         messages: [{ role: 'user', content: `Schrijf feedback voor ${studentName} op basis van deze notities van de leerkracht: "${text}"` }]
       })
     });
