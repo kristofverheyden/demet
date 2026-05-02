@@ -110,6 +110,33 @@
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
   }
+  .help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+  }
+  .help-icon:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent-text); }
+  .help-box {
+    background: var(--accent-light);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--accent-text);
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
 
   .dash-card {
     background: var(--surface);
@@ -394,21 +421,48 @@
       <div class="settings-section">
         <div class="settings-section-title">Prompt</div>
         <div class="field">
-          <label>Naam</label>
-          <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback" value="TJ Feedback">
+          <label>Kies prompt</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="settingPromptSelect" onchange="onPromptSelect()" style="flex:1"></select>
+            <button onclick="newPrompt()" style="white-space:nowrap">+ Nieuwe prompt</button>
+          </div>
         </div>
         <div class="field">
-          <label>Prompttekst</label>
-          <textarea id="settingPromptText" style="min-height:160px" placeholder="Schrijf hier de instructies voor de AI..."></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="margin-bottom:0">Prompttekst</label>
+            <button onclick="clearPromptText()" style="font-size:12px;padding:4px 10px">Leegmaken</button>
+          </div>
+          <textarea id="settingPromptText" style="min-height:120px" placeholder="Schrijf hier de instructies voor de AI..."></textarea>
         </div>
+        <div class="field">
+          <label>Naam van deze prompt</label>
+          <input type="text" id="settingPromptName" placeholder="bv. TJ Feedback">
+        </div>
+        <div class="btn-row" style="margin-top:0.5rem">
+          <button class="primary" onclick="saveCurrentPrompt()">Prompt opslaan</button>
+          <button onclick="deleteCurrentPrompt()" style="color:var(--danger);border-color:var(--danger)">Verwijderen</button>
+        </div>
+        <div class="status" id="promptStatus"></div>
       </div>
 
       <!-- Sectie: Verdeling -->
       <div class="settings-section">
         <div class="settings-section-title">Verdeling</div>
+
         <div class="field">
-          <label>Instelling verdeling</label>
-          <input type="text" id="settingVerdeling" placeholder="Binnenkort beschikbaar">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <span style="font-size:13px;font-weight:600">Tijdens de sessie</span>
+            <span class="help-icon" onclick="toggleHelp('helpTijdens')" title="Meer info">?</span>
+          </div>
+          <div id="helpTijdens" class="help-box" style="display:none">Selecteer tijdens de sessie welke onderdelen van de classroom dat je wil bekijken.</div>
+          <input type="text" id="settingVerdelingTijdens" placeholder="Voer een woord in...">
+        </div>
+
+        <div class="field">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <span style="font-size:13px;font-weight:600">Feedback schrijven</span>
+          </div>
+          <input type="text" id="settingVerdelingFeedback" placeholder="Voer een woord in...">
         </div>
       </div>
 
@@ -450,23 +504,113 @@ function showPage(id) {
   if (id === 'page-settings') loadSettingsUI();
 }
 
+// ── Prompt beheer ──────────────────────────────────────────
+function getPrompts() {
+  try { return JSON.parse(localStorage.getItem('demetPrompts') || '[]'); } catch { return []; }
+}
+function savePrompts(arr) {
+  localStorage.setItem('demetPrompts', JSON.stringify(arr));
+}
+function getSelectedPromptIndex() {
+  const sel = document.getElementById('settingPromptSelect');
+  return sel ? parseInt(sel.value) : -1;
+}
+
 function loadSettingsUI() {
   const s = loadSettings();
-  document.getElementById('settingPromptName').value = s.promptName;
-  document.getElementById('settingPromptText').value = s.promptText;
+  document.getElementById('settingVerdelingTijdens').value = s.verdelingTijdens || '';
+  document.getElementById('settingVerdelingFeedback').value = s.verdelingFeedback || '';
+  document.getElementById('settingClassroom').value = s.classroom || '';
+  refreshPromptDropdown();
+}
+
+function refreshPromptDropdown(selectIndex) {
+  const prompts = getPrompts();
+  const sel = document.getElementById('settingPromptSelect');
+  sel.innerHTML = '';
+  if (!prompts.length) {
+    sel.innerHTML = '<option value="">Geen prompts — maak een nieuwe aan</option>';
+    document.getElementById('settingPromptName').value = '';
+    document.getElementById('settingPromptText').value = '';
+    return;
+  }
+  prompts.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.name;
+    sel.appendChild(opt);
+  });
+  const idx = selectIndex !== undefined ? selectIndex : 0;
+  sel.value = idx;
+  onPromptSelect();
+}
+
+function onPromptSelect() {
+  const prompts = getPrompts();
+  const i = getSelectedPromptIndex();
+  if (i < 0 || !prompts[i]) return;
+  document.getElementById('settingPromptName').value = prompts[i].name;
+  document.getElementById('settingPromptText').value = prompts[i].text;
   setTimeout(() => autoResize(document.getElementById('settingPromptText')), 0);
 }
 
+function clearPromptText() {
+  const ta = document.getElementById('settingPromptText');
+  ta.value = '';
+  autoResize(ta);
+}
+
+function newPrompt() {
+  const prompts = getPrompts();
+  prompts.push({ name: 'Nieuwe prompt', text: '' });
+  savePrompts(prompts);
+  refreshPromptDropdown(prompts.length - 1);
+}
+
+function saveCurrentPrompt() {
+  const prompts = getPrompts();
+  const i = getSelectedPromptIndex();
+  const name = document.getElementById('settingPromptName').value.trim();
+  const text = document.getElementById('settingPromptText').value.trim();
+  if (!name) { showStatus('promptStatus', 'Geef de prompt een naam.', 'error'); return; }
+  if (i >= 0 && prompts[i]) {
+    prompts[i] = { name, text };
+    savePrompts(prompts);
+    refreshPromptDropdown(i);
+  } else {
+    prompts.push({ name, text });
+    savePrompts(prompts);
+    refreshPromptDropdown(prompts.length - 1);
+  }
+  showStatus('promptStatus', 'Prompt opgeslagen.', 'success');
+  setTimeout(() => document.getElementById('promptStatus').className = 'status', 2500);
+}
+
+function deleteCurrentPrompt() {
+  const prompts = getPrompts();
+  const i = getSelectedPromptIndex();
+  if (i < 0 || !prompts[i]) return;
+  if (!confirm(`Prompt "${prompts[i].name}" verwijderen?`)) return;
+  prompts.splice(i, 1);
+  savePrompts(prompts);
+  refreshPromptDropdown(0);
+}
+
+function toggleHelp(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// ── Algemene instellingen ───────────────────────────────────
 function loadSettings() {
-  try {
-    return JSON.parse(localStorage.getItem('demetSettings') || '{}');
-  } catch { return {}; }
+  try { return JSON.parse(localStorage.getItem('demetSettings') || '{}'); } catch { return {}; }
 }
 
 function saveSettings() {
   const s = {
-    promptName: document.getElementById('settingPromptName').value.trim(),
-    promptText: document.getElementById('settingPromptText').value.trim(),
+    verdelingTijdens: document.getElementById('settingVerdelingTijdens').value.trim(),
+    verdelingFeedback: document.getElementById('settingVerdelingFeedback').value.trim(),
+    classroom: document.getElementById('settingClassroom').value.trim(),
   };
   localStorage.setItem('demetSettings', JSON.stringify(s));
   showStatus('settingsStatus', 'Instellingen opgeslagen.', 'success');
