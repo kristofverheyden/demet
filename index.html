@@ -138,6 +138,38 @@
     line-height: 1.5;
   }
 
+  /* Context-balk */
+  .context-bar {
+    display: none;
+    background: var(--accent-light);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-sm);
+    padding: 10px 16px;
+    margin-bottom: 1.25rem;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .context-bar.visible { display: flex; }
+  .context-label {
+    font-size: 13px;
+    color: var(--accent-text);
+    font-weight: 500;
+    flex: 1;
+    min-width: 0;
+  }
+  .context-label strong { font-weight: 700; }
+  .btn-change {
+    font-size: 12px;
+    padding: 4px 12px;
+    color: var(--accent-text);
+    border-color: var(--accent);
+    background: white;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .btn-change:hover { background: var(--accent); color: white; }
+
   .dash-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -344,8 +376,36 @@
     </div>
   </div>
 
+  <!-- Keuze klas + onderwerp (na login) -->
+  <div class="page" id="page-setup">
+    <div class="card" style="max-width:480px;margin:0 auto">
+      <div class="card-title">Kies je werkruimte</div>
+      <p class="card-sub">Selecteer de klas en het onderwerp waarover je wil werken. Deze keuze wordt onthouden.</p>
+      <div class="field">
+        <label>Klas</label>
+        <select id="setupCourseSelect" onchange="setupLoadTopics()">
+          <option value="">Laden...</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Onderwerp</label>
+        <select id="setupTopicSelect">
+          <option value="">Selecteer eerst een klas</option>
+        </select>
+      </div>
+      <div class="status" id="setupStatus"></div>
+      <div class="btn-row" style="margin-top:1.25rem">
+        <button class="primary" onclick="confirmSetup()">Starten</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Startpagina -->
   <div class="page" id="page-home">
+    <div class="context-bar" id="contextBar">
+      <div class="context-label" id="contextLabel"></div>
+      <button class="btn-change" onclick="showPage('page-setup')">Wijzigen</button>
+    </div>
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem">Kies een module om te starten.</p>
     <div class="dashboard-grid" style="grid-template-columns:1fr 1fr 1fr">
       <div class="dash-card disabled">
@@ -370,21 +430,18 @@
   <div class="page" id="page-feedback">
     <button class="btn-back" onclick="showPage('page-home')">← Terug naar startpagina</button>
 
+    <div class="context-bar visible" id="contextBarFeedback">
+      <div class="context-label" id="contextLabelFeedback"></div>
+      <button class="btn-change" onclick="showPage('page-setup')">Wijzigen</button>
+    </div>
+
     <div class="card">
       <div class="card-title">Feedback schrijven</div>
-      <p class="card-sub">Kies een klas en een taak — de leerlingen verschijnen automatisch.</p>
-
-      <div class="field">
-        <label>Klas</label>
-        <select id="courseSelect" onchange="loadAssignments()">
-          <option value="">Kies een klas...</option>
-        </select>
-      </div>
 
       <div class="field">
         <label>Taak</label>
         <select id="assignmentSelect" onchange="loadStudents()">
-          <option value="">Selecteer eerst een klas</option>
+          <option value="">Laden...</option>
         </select>
       </div>
 
@@ -489,19 +546,36 @@
 <script>
 const CLIENT_ID = '11237153136-rnqlmm9tvhddsgdr4vlq7ukfodm2fe0m.apps.googleusercontent.com';
 const ANTHROPIC_KEY = atob('c2stYW50LWFwaTAzLXE3X25tQV8xUnQ3MVNZMjZ4Q3VRdFNub3Y2dTZqTGVZX2tOc19IbDZLNHF1SFZRT3RYY0NyVG9wdV91NUUyMFFjNFNNTWhZYWJ6VHhYbU82VUNfajBRLWZOekhZd0FB');
-const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly https://www.googleapis.com/auth/classroom.topics.readonly';
+const SCOPES = 'https://www.googleapis.com/auth/classroom.coursework.students https://www.googleapis.com/auth/classroom.courses.readonly https://www.googleapis.com/auth/classroom.rosters.readonly https://www.googleapis.com/auth/classroom.topics.readonly https://www.googleapis.com/auth/drive.appdata';
 let accessToken = null;
 let students = [];
 let studentData = [];
+let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '', driveFileId: null };
+let allCourses = [];
 
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   if (id === 'page-feedback') {
+    updateContextBar();
+    loadAssignments();
     document.getElementById('studentSection').style.display = 'none';
     document.getElementById('selectStatus').className = 'status';
   }
+  if (id === 'page-home') updateContextBar();
   if (id === 'page-settings') loadSettingsUI();
+  if (id === 'page-setup') populateSetupCourses();
+}
+
+function updateContextBar() {
+  if (!userPrefs.courseId) return;
+  const label = `<strong>${userPrefs.courseName}</strong> &nbsp;·&nbsp; ${userPrefs.topicName}`;
+  const cb = document.getElementById('contextBar');
+  const cbf = document.getElementById('contextBarFeedback');
+  const cl = document.getElementById('contextLabel');
+  const clf = document.getElementById('contextLabelFeedback');
+  if (cb) { cb.classList.add('visible'); cl.innerHTML = label; }
+  if (cbf) { clf.innerHTML = label; }
 }
 
 // ── Prompt beheer ──────────────────────────────────────────
@@ -617,6 +691,115 @@ function saveSettings() {
   setTimeout(() => document.getElementById('settingsStatus').className = 'status', 2500);
 }
 
+// ── Google Drive prefs ─────────────────────────────────────
+async function loadPreferencesFromDrive() {
+  try {
+    const listRes = await fetch(
+      "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D'demet-prefs.json'&fields=files(id)",
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const listData = await listRes.json();
+    const files = listData.files || [];
+    if (!files.length) return;
+    const fileId = files[0].id;
+    const fileRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const prefs = await fileRes.json();
+    userPrefs = { ...userPrefs, ...prefs, driveFileId: fileId };
+  } catch (e) {}
+}
+
+async function savePreferencesToDrive() {
+  const body = JSON.stringify({
+    courseId: userPrefs.courseId,
+    courseName: userPrefs.courseName,
+    topicId: userPrefs.topicId,
+    topicName: userPrefs.topicName
+  });
+  try {
+    if (userPrefs.driveFileId) {
+      await fetch(
+        `https://www.googleapis.com/upload/drive/v3/files/${userPrefs.driveFileId}?uploadType=media`,
+        { method: 'PATCH', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body }
+      );
+    } else {
+      const meta = JSON.stringify({ name: 'demet-prefs.json', parents: ['appDataFolder'] });
+      const form = new FormData();
+      form.append('metadata', new Blob([meta], { type: 'application/json' }));
+      form.append('file', new Blob([body], { type: 'application/json' }));
+      const res = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id',
+        { method: 'POST', headers: { Authorization: `Bearer ${accessToken}` }, body: form }
+      );
+      const d = await res.json();
+      userPrefs.driveFileId = d.id;
+    }
+  } catch (e) {}
+}
+
+// ── Setup pagina ───────────────────────────────────────────
+function populateSetupCourses() {
+  const sel = document.getElementById('setupCourseSelect');
+  sel.innerHTML = '<option value="">Kies een klas...</option>';
+  allCourses.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+  if (userPrefs.courseId) {
+    sel.value = userPrefs.courseId;
+    setupLoadTopics();
+  }
+}
+
+async function setupLoadTopics() {
+  const courseId = document.getElementById('setupCourseSelect').value;
+  const sel = document.getElementById('setupTopicSelect');
+  sel.innerHTML = '<option value="">Laden...</option>';
+  if (!courseId) { sel.innerHTML = '<option value="">Selecteer eerst een klas</option>'; return; }
+  try {
+    const res = await fetch(`https://classroom.googleapis.com/v1/courses/${courseId}/topics?pageSize=100`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const data = await res.json();
+    const topics = (data.topic || []).sort((a, b) => {
+      const na = parseInt((a.name.match(/^(\d+)/) || [])[1]);
+      const nb = parseInt((b.name.match(/^(\d+)/) || [])[1]);
+      if (!isNaN(na) && !isNaN(nb)) return nb - na;
+      return b.name.localeCompare(a.name, 'nl', { sensitivity: 'base' });
+    });
+    if (!topics.length) { sel.innerHTML = '<option value="">Geen onderwerpen gevonden</option>'; return; }
+    sel.innerHTML = '<option value="">Kies een onderwerp...</option>';
+    topics.forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.topicId;
+      opt.textContent = t.name;
+      sel.appendChild(opt);
+    });
+    if (userPrefs.topicId) sel.value = userPrefs.topicId;
+  } catch (e) {
+    sel.innerHTML = '<option value="">Fout bij laden</option>';
+  }
+}
+
+async function confirmSetup() {
+  const courseId = document.getElementById('setupCourseSelect').value;
+  const topicId = document.getElementById('setupTopicSelect').value;
+  if (!courseId || !topicId) {
+    showStatus('setupStatus', 'Kies een klas én een onderwerp.', 'error');
+    return;
+  }
+  const courseName = document.getElementById('setupCourseSelect').selectedOptions[0].textContent;
+  const topicName = document.getElementById('setupTopicSelect').selectedOptions[0].textContent;
+  userPrefs = { ...userPrefs, courseId, courseName, topicId, topicName };
+  showStatus('setupStatus', 'Opslaan...', 'success');
+  await savePreferencesToDrive();
+  showPage('page-home');
+}
+
 function showStatus(id, msg, type) {
   const el = document.getElementById(id);
   el.textContent = msg;
@@ -666,30 +849,29 @@ async function loadCourses() {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
     const data = await res.json();
-    const courses = data.courses || [];
-    if (!courses.length) {
+    allCourses = data.courses || [];
+    if (!allCourses.length) {
       showStatus('loginStatus', 'Geen actieve klassen gevonden als leraar.', 'error');
       return;
     }
-    const sel = document.getElementById('courseSelect');
-    sel.innerHTML = '<option value="">Kies een klas...</option>';
-    courses.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = c.name;
-      sel.appendChild(opt);
-    });
-    showPage('page-home');
+    // Laad opgeslagen prefs uit Drive
+    await loadPreferencesFromDrive();
+    if (userPrefs.courseId && userPrefs.topicId) {
+      showPage('page-home');
+    } else {
+      showPage('page-setup');
+    }
   } catch (e) {
     showStatus('loginStatus', 'Fout bij ophalen klassen: ' + e.message, 'error');
   }
 }
 
 async function loadAssignments() {
-  const courseId = document.getElementById('courseSelect').value;
+  const courseId = userPrefs.courseId;
   const sel = document.getElementById('assignmentSelect');
+  if (!sel) return;
   document.getElementById('studentSection').style.display = 'none';
-  if (!courseId) { sel.innerHTML = '<option value="">Selecteer eerst een klas</option>'; return; }
+  if (!courseId) { sel.innerHTML = '<option value="">Geen klas geselecteerd</option>'; return; }
   sel.innerHTML = '<option>Laden...</option>';
   try {
     const [worksRes, topicsRes] = await Promise.all([
@@ -708,15 +890,9 @@ async function loadAssignments() {
 
     let works = (worksData.courseWork || []).filter(w => w.workType === 'ASSIGNMENT');
 
-    // Filter op woorden uit instellingen Verdeling > Feedback schrijven
-    const settings = loadSettings();
-    const filterWords = (settings.verdelingFeedback || '')
-      .split(/[\s,;]+/).map(w => w.trim().toLowerCase()).filter(Boolean);
-    if (filterWords.length) {
-      works = works.filter(w => {
-        const topicName = (topicMap[w.topicId] || '').toLowerCase();
-        return filterWords.some(fw => topicName.includes(fw));
-      });
+    // Filter op het opgeslagen onderwerp
+    if (userPrefs.topicId) {
+      works = works.filter(w => w.topicId === userPrefs.topicId);
     }
 
     function topicSortKey(name) {
@@ -728,31 +904,27 @@ async function loadAssignments() {
       const tb = topicMap[b.topicId] || '';
       const na = topicSortKey(ta);
       const nb = topicSortKey(tb);
-      // Beide beginnen met een getal → hoogste eerst
       if (na !== null && nb !== null) {
         if (nb !== na) return nb - na;
       } else if (na !== null) {
-        return -1; // Getal gaat voor letters
+        return -1;
       } else if (nb !== null) {
         return 1;
       }
-      // Beide alfabetisch → omgekeerd alfabetisch
       const topicCmp = tb.localeCompare(ta, 'nl', { sensitivity: 'base' });
       if (topicCmp !== 0) return topicCmp;
-      // Binnen hetzelfde onderwerp: hoogste nummer eerst
       return b.title.localeCompare(a.title, 'nl', { numeric: true, sensitivity: 'base' });
     });
 
     if (!works.length) {
-      sel.innerHTML = '<option value="">Geen taken gevonden voor dit filter</option>';
+      sel.innerHTML = '<option value="">Geen taken gevonden voor dit onderwerp</option>';
       return;
     }
     sel.innerHTML = '<option value="">Kies een taak...</option>';
     works.forEach(w => {
       const opt = document.createElement('option');
       opt.value = w.id;
-      const topic = topicMap[w.topicId];
-      opt.textContent = topic ? `${topic}: ${w.title}` : w.title;
+      opt.textContent = w.title;
       sel.appendChild(opt);
     });
   } catch (e) {
@@ -761,7 +933,7 @@ async function loadAssignments() {
 }
 
 async function loadStudents() {
-  const courseId = document.getElementById('courseSelect').value;
+  const courseId = userPrefs.courseId;
   const assignmentId = document.getElementById('assignmentSelect').value;
   const section = document.getElementById('studentSection');
   if (!courseId || !assignmentId) { section.style.display = 'none'; return; }
