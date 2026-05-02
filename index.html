@@ -496,6 +496,7 @@ async function loadStudents() {
       showStatus('selectStatus', 'Geen leerlingen gevonden in deze klas.', 'error');
       return;
     }
+    students.sort((a, b) => a.profile.name.fullName.localeCompare(b.profile.name.fullName, 'nl'));
     studentData = students.map(() => ({ note: '', sent: false }));
     spokenTranscript = '';
 
@@ -544,11 +545,14 @@ function showStudent(index) {
       ${d.sent ? '<span class="sent-badge" style="display:inline">Verstuurd ✓</span>' : ''}
     </div>
     ${!d.sent ? `
+    <button class="btn-mic" id="micBtn" onclick="toggleSpeech()" style="margin-bottom:8px">🎤 Inspreken</button>
+    <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
     <div class="ai-row">
-      <button class="btn-mic" id="micBtn" onclick="toggleSpeech()">🎤 Inspreken</button>
+      <select id="promptSelect" style="flex:1">
+        <option value="tj-feedback">TJ Feedback</option>
+      </select>
       <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" ${spokenTranscript ? '' : 'disabled'}>✨ Genereer</button>
     </div>
-    <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
     ` : ''}
     <label>Feedback</label>
     <textarea id="current-note" placeholder="Feedback voor ${firstName}..." ${d.sent ? 'disabled' : ''}>${d.note}</textarea>
