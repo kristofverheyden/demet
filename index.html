@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DemetExpert</title>
+<title>DeMETexpert</title>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
@@ -57,6 +57,17 @@
     align-items: center;
     gap: 8px;
   }
+  .btn-logout {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-logout:hover { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
 
   .main { width: 100%; max-width: 680px; }
 
@@ -353,8 +364,8 @@
 <body>
 
 <header>
-  <div class="logo">Demet<span>Expert</span></div>
-  <div class="header-user" id="headerUser"></div>
+  <div class="logo">De<span>MET</span>expert</div>
+  <button class="btn-logout" id="logoutBtn" style="display:none" onclick="logout()">Uitloggen</button>
 </header>
 
 <div class="main">
@@ -363,7 +374,7 @@
   <div class="page active" id="page-login">
     <div class="login-wrap">
       <div>
-        <div class="login-logo">Demet<span>Expert</span></div>
+        <div class="login-logo">De<span>MET</span>expert</div>
         <p class="login-sub" style="margin-top:6px">Jouw slim feedbackplatform voor Google Classroom</p>
       </div>
       <button class="btn-google" onclick="startLogin()">
@@ -582,6 +593,7 @@ fbAuth.onAuthStateChanged(async user => {
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  document.getElementById('logoutBtn').style.display = id === 'page-login' ? 'none' : '';
   if (id === 'page-feedback') {
     updateContextBar();
     loadAssignments();
@@ -592,6 +604,17 @@ function showPage(id) {
   if (id === 'page-settings') loadSettingsUI();
   if (id === 'page-settings-prompt') loadPromptsFromFirestore().then(() => refreshPromptDropdown());
   if (id === 'page-setup') populateSetupCourses();
+}
+
+async function logout() {
+  await fbAuth.signOut();
+  accessToken = null;
+  localStorage.removeItem('demetToken');
+  localStorage.removeItem('demetTokenExpiry');
+  userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
+  allCourses = [];
+  cachedPrompts = [];
+  showPage('page-login');
 }
 
 function updateContextBar() {
