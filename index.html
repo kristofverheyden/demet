@@ -472,7 +472,7 @@
 
     <div class="card">
       <div class="card-title">Instellingen</div>
-      <p class="card-sub">Beheer je prompts, verdelingen en Classroom-opties.</p>
+      <p class="card-sub">Beheer je prompts en werkruimte.</p>
 
       <!-- Sectie: Prompt -->
       <div class="settings-section">
@@ -502,39 +502,16 @@
         <div class="status" id="promptStatus"></div>
       </div>
 
-      <!-- Sectie: Verdeling -->
+      <!-- Sectie: Klas en onderwerp -->
       <div class="settings-section">
-        <div class="settings-section-title">Verdeling</div>
-
+        <div class="settings-section-title">Klas en onderwerp</div>
         <div class="field">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="font-size:13px;font-weight:600">Tijdens de sessie</span>
-            <span class="help-icon" onclick="toggleHelp('helpTijdens')" title="Meer info">?</span>
-          </div>
-          <div id="helpTijdens" class="help-box" style="display:none">Selecteer tijdens de sessie welke onderdelen van de classroom dat je wil bekijken.</div>
-          <input type="text" id="settingVerdelingTijdens" placeholder="Voer een woord in...">
+          <label>Actieve werkruimte</label>
+          <div id="settingsContextLabel" style="font-size:14px;padding:10px 0;color:var(--text-muted)">—</div>
         </div>
-
-        <div class="field">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
-            <span style="font-size:13px;font-weight:600">Feedback schrijven</span>
-          </div>
-          <input type="text" id="settingVerdelingFeedback" placeholder="Voer een woord in...">
-        </div>
+        <button onclick="showPage('page-setup')">Wijzigen</button>
       </div>
 
-      <!-- Sectie: Classroom -->
-      <div class="settings-section">
-        <div class="settings-section-title">Classroom</div>
-        <div class="field">
-          <label>Instelling Classroom</label>
-          <input type="text" id="settingClassroom" placeholder="Binnenkort beschikbaar">
-        </div>
-      </div>
-
-      <div class="btn-row">
-        <button class="primary" onclick="saveSettings()">Opslaan</button>
-      </div>
       <div class="status" id="settingsStatus"></div>
     </div>
   </div>
@@ -602,10 +579,12 @@ function getSelectedPromptIndex() {
 }
 
 function loadSettingsUI() {
-  const s = loadSettings();
-  document.getElementById('settingVerdelingTijdens').value = s.verdelingTijdens || '';
-  document.getElementById('settingVerdelingFeedback').value = s.verdelingFeedback || '';
-  document.getElementById('settingClassroom').value = s.classroom || '';
+  const label = document.getElementById('settingsContextLabel');
+  if (label) {
+    label.innerHTML = userPrefs.courseId
+      ? `<strong>${userPrefs.courseName}</strong> &nbsp;·&nbsp; ${userPrefs.topicName}`
+      : 'Nog geen werkruimte gekozen.';
+  }
   refreshPromptDropdown();
 }
 
@@ -692,14 +671,7 @@ function loadSettings() {
 }
 
 function saveSettings() {
-  const s = {
-    verdelingTijdens: document.getElementById('settingVerdelingTijdens').value.trim(),
-    verdelingFeedback: document.getElementById('settingVerdelingFeedback').value.trim(),
-    classroom: document.getElementById('settingClassroom').value.trim(),
-  };
-  localStorage.setItem('demetSettings', JSON.stringify(s));
-  showStatus('settingsStatus', 'Instellingen opgeslagen.', 'success');
-  setTimeout(() => document.getElementById('settingsStatus').className = 'status', 2500);
+  localStorage.setItem('demetSettings', JSON.stringify({}));
 }
 
 // ── Google Drive prefs ─────────────────────────────────────
