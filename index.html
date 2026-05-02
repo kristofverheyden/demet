@@ -888,8 +888,7 @@ async function startLogin() {
   try {
     showStatus('loginStatus', 'Wacht op Google-login...', 'success');
     const result = await fbAuth.signInWithPopup(provider);
-    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-    accessToken = credential.accessToken;
+    accessToken = result.credential?.accessToken;
     localStorage.setItem('demetToken', accessToken);
     localStorage.setItem('demetTokenExpiry', Date.now() + 3600 * 1000);
     showStatus('loginStatus', 'Ingelogd! Klassen worden opgehaald...', 'success');
