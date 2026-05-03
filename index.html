@@ -2242,7 +2242,7 @@ const VESTIGINGEN = ['Leuven', 'Katelijne', 'Tielt-Winge'];
 
 // coachState[vestiging] = { open, coachesOpen, leerlingenOpen, courseId, courseName, loading }
 let coachState = {};
-// coachData[vestiging] = { coaches: [{id,name,email}], leerlingen: [{id,name,email}] }
+// coachData[vestiging] = { coaches: [{id,name,email,isCoach}], leerlingen: [{id,name,email,coachId}] }
 let coachData  = {};
 
 function initCoachPage() {
@@ -2257,7 +2257,6 @@ function initCoachPage() {
 
 async function loadCoachDataFromFirestore() {
   if (!fbDb || !fbAuth.currentUser) return;
-  const uid = fbAuth.currentUser.uid;
   for (const v of VESTIGINGEN) {
     try {
       const coachSnap = await fbDb.collection('coaches').where('vestiging','==',v).get();
@@ -2276,16 +2275,15 @@ function renderCoachPage() {
   VESTIGINGEN.forEach(v => {
     const st  = coachState[v];
     const dat = coachData[v];
-    const totalC = dat.coaches.length;
-    const totalL = dat.leerlingen.length;
-    const badge  = totalC + totalL > 0
-      ? `<span style="font-size:12px;color:var(--text-muted);font-weight:400">${totalC} coaches · ${totalL} leerlingen</span>`
+    const nCoaches = dat.coaches.filter(c => c.isCoach !== false).length;
+    const nLeerlingen = dat.leerlingen.length;
+    const badge = nCoaches + nLeerlingen > 0
+      ? `<span style="font-size:12px;color:var(--text-muted);font-weight:400">${nCoaches} coaches · ${nLeerlingen} leerlingen</span>`
       : '';
-    const chevron = st.open ? '▲' : '▼';
     html += `<div class="coach-vestiging">
       <div class="coach-vestiging-header" onclick="toggleVestiging('${v}')">
         <span>${v} ${badge}</span>
-        <span>${chevron}</span>
+        <span>${st.open ? '▲' : '▼'}</span>
       </div>
       <div class="coach-vestiging-body${st.open ? ' open' : ''}" id="vest-body-${v}">
         ${renderVestigingBody(v)}
@@ -2299,10 +2297,6 @@ function renderVestigingBody(v) {
   const st  = coachState[v];
   const dat = coachData[v];
 
-  const courseLabel = st.courseName
-    ? `<span style="font-size:13px;color:var(--accent-text);font-weight:600">${st.courseName}</span>`
-    : `<span style="font-size:13px;color:var(--text-muted)">Nog geen vak gekozen</span>`;
-
   let html = `<div class="field" style="margin-bottom:12px">
     <label style="font-size:13px">Vak uit Google Classroom</label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -2315,41 +2309,79 @@ function renderVestigingBody(v) {
     <div id="coachLoadStatus-${v}" class="status" style="margin-top:6px"></div>
   </div>`;
 
-  // Coaches section
-  const chev_c = st.coachesOpen ? '▲' : '▼';
+  const nActive = dat.coaches.filter(c => c.isCoach !== false).length;
   html += `<div class="coach-section">
     <div class="coach-section-header" onclick="togglePersonSection('${v}','coaches')">
-      <span>Coaches (${dat.coaches.length})</span>
-      <span>${chev_c}</span>
+      <span>Coaches (${nActive} van ${dat.coaches.length})</span>
+      <span>${st.coachesOpen ? '▲' : '▼'}</span>
     </div>
     <div class="coach-section-body${st.coachesOpen ? ' open' : ''}" id="coach-sec-coaches-${v}">
-      ${renderPersonList(dat.coaches, 'coach')}
+      ${renderCoachList(v)}
     </div>
   </div>`;
 
-  // Leerlingen section
-  const chev_l = st.leerlingenOpen ? '▲' : '▼';
+  const nLinked = dat.leerlingen.filter(l => l.coachId).length;
   html += `<div class="coach-section">
     <div class="coach-section-header" onclick="togglePersonSection('${v}','leerlingen')">
-      <span>Leerlingen (${dat.leerlingen.length})</span>
-      <span>${chev_l}</span>
+      <span>Leerlingen (${nLinked} van ${dat.leerlingen.length} gekoppeld)</span>
+      <span>${st.leerlingenOpen ? '▲' : '▼'}</span>
     </div>
     <div class="coach-section-body${st.leerlingenOpen ? ' open' : ''}" id="coach-sec-leerlingen-${v}">
-      ${renderPersonList(dat.leerlingen, 'leerling')}
+      ${renderLeerlingenTable(v)}
     </div>
   </div>`;
 
   return html;
 }
 
-function renderPersonList(persons, type) {
-  if (!persons.length) return `<p style="font-size:13px;color:var(--text-muted);margin:0">Nog geen ${type}s geladen.</p>`;
-  return persons.map(p => `
-    <div class="coach-person-row">
-      <span style="flex:1;font-weight:500">${p.name||'—'}</span>
-      <span style="color:var(--text-muted);font-size:13px">${p.email||''}</span>
-      <span class="coach-uid">#${p.id.slice(0,8).toUpperCase()}</span>
-    </div>`).join('');
+function renderCoachList(v) {
+  const coaches = coachData[v].coaches;
+  if (!coaches.length) return `<p style="font-size:13px;color:var(--text-muted);margin:0">Nog geen coaches geladen.</p>`;
+  const sorted = [...coaches].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
+  return `<p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">
+      Vink leerkrachten <strong>uit</strong> die geen coach zijn — zij verdwijnen uit de koppelingslijst.
+    </p>` +
+    sorted.map(c => {
+      const isCoach = c.isCoach !== false;
+      return `<div class="coach-person-row">
+        <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer;min-width:0">
+          <input type="checkbox" ${isCoach ? 'checked' : ''}
+            onchange="saveCoachFlag('${v}','${c.id}',this.checked)"
+            style="width:16px;height:16px;flex-shrink:0;cursor:pointer">
+          <span style="font-weight:500${isCoach ? '' : ';color:var(--text-muted);text-decoration:line-through'}">${c.name||'—'}</span>
+        </label>
+        <span style="color:var(--text-muted);font-size:12px;white-space:nowrap">${c.email||''}</span>
+      </div>`;
+    }).join('');
+}
+
+function renderLeerlingenTable(v) {
+  const dat = coachData[v];
+  if (!dat.leerlingen.length) return `<p style="font-size:13px;color:var(--text-muted);margin:0">Nog geen leerlingen geladen.</p>`;
+  const activeCoaches = dat.coaches
+    .filter(c => c.isCoach !== false)
+    .sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
+  const sorted = [...dat.leerlingen].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
+  return `<table class="att-table">
+    <thead><tr><th>Naam leerling</th><th>Coach</th></tr></thead>
+    <tbody>
+      ${sorted.map(l => `<tr>
+        <td>
+          <div style="font-weight:500">${l.name||'—'}</div>
+          <div style="font-size:11px;color:var(--text-muted)">${l.email||''}</div>
+        </td>
+        <td>
+          <select style="font-size:13px;width:100%;min-width:120px"
+            onchange="saveLeerlingCoach('${v}','${l.id}',this.value)">
+            <option value="">— Geen coach —</option>
+            ${activeCoaches.map(c =>
+              `<option value="${c.id}"${c.id===(l.coachId||'')?'selected':''}>${c.name||c.email}</option>`
+            ).join('')}
+          </select>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
 }
 
 function toggleVestiging(v) {
@@ -2360,12 +2392,33 @@ function toggleVestiging(v) {
 function togglePersonSection(v, section) {
   if (section === 'coaches')    coachState[v].coachesOpen    = !coachState[v].coachesOpen;
   if (section === 'leerlingen') coachState[v].leerlingenOpen = !coachState[v].leerlingenOpen;
-  const bodyId = `coach-sec-${section}-${v}`;
-  const body = document.getElementById(bodyId);
-  if (body) body.classList.toggle('open');
-  // update chevron via re-render of body
   const vesBody = document.getElementById(`vest-body-${v}`);
   if (vesBody) vesBody.innerHTML = renderVestigingBody(v);
+}
+
+async function saveCoachFlag(v, coachId, isCoach) {
+  const coach = coachData[v].coaches.find(c => c.id === coachId);
+  if (coach) coach.isCoach = isCoach;
+  // Re-render so header count and leerlingen dropdown update
+  const vesBody = document.getElementById(`vest-body-${v}`);
+  if (vesBody) vesBody.innerHTML = renderVestigingBody(v);
+  try {
+    await fbDb.collection('coaches').doc(coachId).update({ isCoach });
+  } catch(e) { console.error('saveCoachFlag:', e); }
+}
+
+async function saveLeerlingCoach(v, leerlingId, coachId) {
+  const leerling = coachData[v].leerlingen.find(l => l.id === leerlingId);
+  if (leerling) leerling.coachId = coachId || null;
+  // Update the linked-count in the section header
+  const hdr = document.querySelector(`#coach-sec-leerlingen-${v}`)?.previousElementSibling?.querySelector('span');
+  if (hdr) {
+    const dat = coachData[v];
+    hdr.textContent = `Leerlingen (${dat.leerlingen.filter(l=>l.coachId).length} van ${dat.leerlingen.length} gekoppeld)`;
+  }
+  try {
+    await fbDb.collection('leerlingen').doc(leerlingId).update({ coachId: coachId || null });
+  } catch(e) { console.error('saveLeerlingCoach:', e); }
 }
 
 async function loadCourseForVestiging(v) {
@@ -2410,26 +2463,26 @@ async function loadCourseForVestiging(v) {
       pageToken = data.nextPageToken || '';
     } while (pageToken);
 
-    // Write to Firestore — delete old entries for this vestiging first
+    // Delete old entries for this vestiging, then write new ones
     const batch1 = fbDb.batch();
-    const oldCoaches = await fbDb.collection('coaches').where('vestiging','==',v).get();
-    oldCoaches.docs.forEach(d => batch1.delete(d.ref));
+    const oldCoaches    = await fbDb.collection('coaches').where('vestiging','==',v).get();
     const oldLeerlingen = await fbDb.collection('leerlingen').where('vestiging','==',v).get();
+    oldCoaches.docs.forEach(d => batch1.delete(d.ref));
     oldLeerlingen.docs.forEach(d => batch1.delete(d.ref));
     await batch1.commit();
 
     const batch2 = fbDb.batch();
     teachers.forEach(t => {
       const ref = fbDb.collection('coaches').doc();
-      batch2.set(ref, { ...t, vestiging:v, courseId, courseName, aangemaakt: new Date().toISOString() });
+      batch2.set(ref, { ...t, vestiging:v, courseId, courseName, isCoach:true, aangemaakt: new Date().toISOString() });
     });
     students.forEach(s => {
       const ref = fbDb.collection('leerlingen').doc();
-      batch2.set(ref, { ...s, vestiging:v, courseId, courseName, aangemaakt: new Date().toISOString() });
+      batch2.set(ref, { ...s, vestiging:v, courseId, courseName, coachId:null, aangemaakt: new Date().toISOString() });
     });
     await batch2.commit();
 
-    // Reload from Firestore so IDs are correct
+    // Reload from Firestore so IDs are available in memory
     const cSnap = await fbDb.collection('coaches').where('vestiging','==',v).get();
     const lSnap = await fbDb.collection('leerlingen').where('vestiging','==',v).get();
     coachData[v].coaches    = cSnap.docs.map(d => ({ id:d.id, ...d.data() }));
