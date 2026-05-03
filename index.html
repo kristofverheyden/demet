@@ -2030,14 +2030,12 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <label style="font-size:13px;font-weight:500;white-space:nowrap">Mail naar:</label>
-      <select id="att-mail-${safeKey}" style="flex:1;min-width:160px">
-        <option value="">— Kies leerling —</option>
-        ${students.map(s => `<option value="${s.email}">${s.name}</option>`).join('')}
-      </select>
-      <button class="primary" disabled style="opacity:.45;cursor:not-allowed">Versturen</button>
-    </div>`;
+    ${taskId ? `
+    <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+      <button class="primary" disabled style="opacity:.45;cursor:not-allowed;font-size:13px">✉️ Afwezigheden mailen</button>
+      <button class="primary" disabled style="opacity:.45;cursor:not-allowed;font-size:13px">✉️ Taak niet in orde mailen</button>
+      <button class="primary" disabled style="opacity:.45;cursor:not-allowed;font-size:13px">✉️ Afwezigheden en taak niet in orde mailen</button>
+    </div>` : ''}`;
 }
 
 function getTaskStatusLabel(subs, userId) {
