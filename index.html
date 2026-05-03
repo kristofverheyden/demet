@@ -2472,6 +2472,21 @@ function renderCoachList(v) {
     }).join('');
 }
 
+function coachShortLabel(coachId, coaches) {
+  if (!coachId) return null;
+  const coach = coaches.find(c => c.id === coachId);
+  if (!coach?.name) return null;
+  const parts     = coach.name.trim().split(/\s+/);
+  const firstName = parts[0];
+  const hasTwin   = coaches.some(c =>
+    c.id !== coachId && c.name &&
+    c.name.trim().split(/\s+/)[0].toLowerCase() === firstName.toLowerCase()
+  );
+  if (!hasTwin) return firstName;
+  const lastPart = parts.slice(1).join(' ').slice(0, 3);
+  return lastPart ? `${firstName} ${lastPart}` : firstName;
+}
+
 function renderLeerlingenTable(v) {
   const dat = coachData[v];
   if (!dat.leerlingen.length) return `<p style="font-size:13px;color:var(--text-muted);margin:0">Nog geen leerlingen geladen.</p>`;
@@ -2482,21 +2497,24 @@ function renderLeerlingenTable(v) {
   return `<table class="att-table">
     <thead><tr><th>Naam leerling</th><th>Coach</th></tr></thead>
     <tbody>
-      ${sorted.map(l => `<tr>
-        <td>
-          <div style="font-weight:500">${l.name||'—'}</div>
-          <div style="font-size:11px;color:var(--text-muted)">${l.email||''}</div>
-        </td>
-        <td>
-          <select style="font-size:13px;width:100%;min-width:120px"
-            onchange="saveLeerlingCoach('${v}','${l.id}',this.value)">
-            <option value="">— Geen coach —</option>
-            ${activeCoaches.map(c =>
-              `<option value="${c.id}"${c.id===(l.coachId||'')?'selected':''}>${c.name||c.email}</option>`
-            ).join('')}
-          </select>
-        </td>
-      </tr>`).join('')}
+      ${sorted.map(l => {
+        const cl = coachShortLabel(l.coachId, activeCoaches);
+        return `<tr>
+          <td>
+            <div style="font-weight:500">${l.name||'—'}${cl ? ` <span style="color:var(--text-muted);font-weight:400;font-size:13px">(${cl})</span>` : ''}</div>
+            <div style="font-size:11px;color:var(--text-muted)">${l.email||''}</div>
+          </td>
+          <td>
+            <select style="font-size:13px;width:100%;min-width:120px"
+              onchange="saveLeerlingCoach('${v}','${l.id}',this.value)">
+              <option value="">— Geen coach —</option>
+              ${activeCoaches.map(c =>
+                `<option value="${c.id}"${c.id===(l.coachId||'')?'selected':''}>${c.name||c.email}</option>`
+              ).join('')}
+            </select>
+          </td>
+        </tr>`;
+      }).join('')}
     </tbody>
   </table>`;
 }
