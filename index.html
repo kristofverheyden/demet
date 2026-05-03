@@ -330,6 +330,20 @@
     font-size: 12px; display: flex; align-items: center; justify-content: center;
   }
   .session-expand-btn:hover { background: var(--surface2); }
+  .attend-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .attend-chip {
+    position: relative; display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    cursor: default; white-space: nowrap;
+  }
+  .attend-chip .att-tooltip {
+    display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%); background: #333; color: #fff;
+    padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 400;
+    white-space: nowrap; z-index: 20; line-height: 1.6; pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  }
+  .attend-chip:hover .att-tooltip { display: block; }
 
   /* AI row */
   .ai-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
@@ -1641,6 +1655,25 @@ async function sendCurrentFeedback() {
 }
 
 // ── Tijdens de sessie ──────────────────────────────────────────
+function buildAttendanceRow(ev) {
+  const all = (ev.attendees || []).filter(a => !a.self && !a.organizer);
+  if (all.length === 0) return '';
+  const ja         = all.filter(a => a.responseStatus === 'accepted');
+  const nee        = all.filter(a => a.responseStatus === 'declined');
+  const afwachting = all.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative');
+  function chip(label, bg, color, list) {
+    if (!list.length) return '';
+    const names = list.map(a => a.displayName || a.email).join('<br>');
+    return `<span class="attend-chip" style="background:${bg};color:${color}">${label} ${list.length}<span class="att-tooltip">${names}</span></span>`;
+  }
+  const chips = [
+    chip('✓ Ja',            '#e8f5e9', '#1b5e20', ja),
+    chip('✗ Nee',           '#fdecea', '#b71c1c', nee),
+    chip('⏳ Afwachting',   '#fff8e1', '#6d4c00', afwachting)
+  ].filter(Boolean).join('');
+  return chips ? `<div class="attend-chips">${chips}</div>` : '';
+}
+
 const SESSION_TYPE_LABELS = {
   'fast-track':   '⚡ Fast track',
   'zonder-taak':  '📋 Gewone sessie',
@@ -1683,6 +1716,7 @@ function buildSessionCard(idx) {
           <div style="font-weight:600;font-size:15px">${title}</div>
           <div style="font-size:13px;color:var(--text-muted)">${dateStr} · ${timeStr}</div>
           <span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>${taskLine}
+          ${buildAttendanceRow(ev)}
         </div>
         <button class="session-expand-btn" onclick="toggleSession(${idx})" title="Openklappen">▾</button>
       </div>`;
@@ -1717,6 +1751,7 @@ function buildSessionCard(idx) {
           <div style="font-size:13px;color:var(--text-muted)">${timeStr}</div>
           ${ev.location    ? `<div style="font-size:13px;color:var(--text-muted);margin-top:3px">📍 ${ev.location}</div>` : ''}
           ${ev.description ? `<div style="font-size:13px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);white-space:pre-line">${ev.description}</div>` : ''}
+          ${buildAttendanceRow(ev)}
         </div>
         ${collapseBtn}
       </div>
