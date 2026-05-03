@@ -594,7 +594,8 @@ const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
   'https://www.googleapis.com/auth/classroom.topics.readonly',
-  'https://www.googleapis.com/auth/gmail.send'
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/drive.file'
 ];
 let accessToken = null;
 let students = [];
@@ -1132,6 +1133,55 @@ async function sendEmailFeedback(toEmail, subject, htmlBody) {
   }
 }
 
+async function createFeedbackDoc(studentName, assignmentName, htmlContent, studentEmail) {
+  const docName = `Feedback ${studentName} – ${assignmentName}`;
+  const htmlDoc = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;max-width:700px;margin:32px auto">
+<h2 style="font-size:16px;margin-bottom:16px">${docName}</h2>
+${htmlContent}
+</body></html>`;
+
+  const boundary = 'fb_' + Date.now();
+  const metadata = JSON.stringify({ name: docName, mimeType: 'application/vnd.google-apps.document' });
+  const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n${htmlDoc}\r\n--${boundary}--`;
+
+  const createRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary="${boundary}"` },
+    body
+  });
+  if (!createRes.ok) {
+    const err = await createRes.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Drive-fout bij aanmaken document');
+  }
+  const { id: fileId } = await createRes.json();
+
+  // Deel met leerling zodat die het kan lezen
+  if (studentEmail) {
+    await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?sendNotificationEmail=false`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'user', emailAddress: studentEmail })
+    });
+  }
+  return fileId;
+}
+
+async function attachDocToSubmission(courseId, assignmentId, submissionId, driveFileId) {
+  const res = await fetch(
+    `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}:modifyAttachments`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ addAttachments: [{ driveFile: { id: driveFileId } }] })
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Fout bij toevoegen bijlage aan Classroom');
+  }
+}
+
 function formatFeedback(command) {
   const el = document.getElementById('current-note');
   if (!el || el.contentEditable === 'false') return;
@@ -1491,30 +1541,38 @@ async function sendCurrentFeedback() {
       console.warn('Feedback opslaan in Firestore mislukt:', fsErr);
     }
 
-    // Stuur e-mail naar leerling via Gmail
     const studentEmail = students[i].profile.emailAddress;
+    const assignSel = document.getElementById('assignmentSelect');
+    const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
+    const warnings = [];
+
+    // Stuur e-mail naar leerling via Gmail
     if (studentEmail && d.note) {
       try {
-        const assignSel = document.getElementById('assignmentSelect');
-        const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
-        await sendEmailFeedback(
-          studentEmail,
-          `Feedback ${userPrefs.courseName} – ${assignName}`,
-          d.note
-        );
+        await sendEmailFeedback(studentEmail, `Feedback ${userPrefs.courseName} – ${assignName}`, d.note);
       } catch (mailErr) {
         console.warn('E-mail versturen mislukt:', mailErr);
-        showStatus('sendStatus', `Feedback verstuurd ✓ (e-mail mislukt: ${mailErr.message})`, 'success');
-        studentData[i].sent = true;
-        document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
-        showStudent(i);
-        return;
+        warnings.push(`e-mail: ${mailErr.message}`);
+      }
+    }
+
+    // Maak Google Doc aan en voeg toe als bijlage aan de inlevering
+    if (d.note) {
+      try {
+        const fileId = await createFeedbackDoc(students[i].profile.name.fullName, assignName, d.note, studentEmail);
+        await attachDocToSubmission(courseId, assignmentId, submissionId, fileId);
+      } catch (attachErr) {
+        console.warn('Bijlage toevoegen mislukt:', attachErr);
+        warnings.push(`bijlage: ${attachErr.message}`);
       }
     }
 
     studentData[i].sent = true;
     document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
-    showStatus('sendStatus', `Feedback verstuurd voor ${students[i].profile.name.fullName}.`, 'success');
+    const statusMsg = warnings.length
+      ? `Feedback verstuurd ✓ (waarschuwingen: ${warnings.join('; ')})`
+      : `Feedback verstuurd voor ${students[i].profile.name.fullName}.`;
+    showStatus('sendStatus', statusMsg, 'success');
     showStudent(i);
   } catch (e) {
     btn.innerHTML = 'Versturen';
