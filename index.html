@@ -1794,7 +1794,7 @@ function buildSessionCard(idx) {
   if (!state.expanded && state.type) {
     // ── ingeklapt ──
     const taskLine = state.type === 'met-taak' && state.taskId
-      ? `<span style="font-size:12px;color:var(--text-muted);margin-left:6px">${getSessionTaskName(state.taskId)}</span>` : '';
+      ? `<span style="font-size:12px;color:var(--text-muted);margin-left:6px">${getSessionTaskName(state.taskId)}${state.taskLink ? ` &nbsp;<a href="${state.taskLink}" target="_blank" style="color:var(--accent);text-decoration:none" onclick="event.stopPropagation()">↗</a>` : ''}</span>` : '';
     div.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
         <div>
@@ -1823,6 +1823,7 @@ function buildSessionCard(idx) {
             <select onchange="setSessionTask(${idx}, this.value)">
               <option value="">— Kies taak —</option>${opts}
             </select>
+            ${state.taskLink ? `<div style="margin-top:6px;font-size:13px"><a href="${state.taskLink}" target="_blank" style="color:var(--accent)">↗ Bekijk taak in Classroom</a></div>` : ''}
           </div>`;
       }
     }
@@ -2118,7 +2119,9 @@ async function setSessionType(idx, type) {
 }
 
 async function setSessionTask(idx, taskId) {
-  sessionStates[idx].taskId = taskId;
+  sessionStates[idx].taskId   = taskId;
+  sessionStates[idx].taskLink = taskId
+    ? (sessionAssignments?.find(a => a.id === taskId)?.alternateLink || '') : '';
   if (taskId) sessionStates[idx].expanded = false;
   rerenderCard(idx);
   saveSessionStateToFirestore(idx);
@@ -2141,7 +2144,7 @@ async function loadSessionAssignments() {
     let work = data.courseWork || [];
     // Alleen taken van het gekozen onderwerp tonen (net zoals bij feedback schrijven)
     if (userPrefs.topicId) work = work.filter(w => w.topicId === userPrefs.topicId);
-    sessionAssignments = work.map(w => ({ id: w.id, title: w.title }));
+    sessionAssignments = work.map(w => ({ id: w.id, title: w.title, alternateLink: w.alternateLink || '' }));
   } catch (e) {
     sessionAssignments = [];
     console.warn('Taken laden mislukt:', e);
@@ -2167,13 +2170,15 @@ async function saveSessionStateToFirestore(idx) {
     await db.collection('sessions').doc(sessionDocKey()).set({
       events: {
         [safeId]: {
-          sessionNr: state.sessionNr || '',
-          type:      state.type || '',
-          taskId:    state.taskId || '',
-          summary:   ev.summary || '',
-          start:     ev.start,
-          end:       ev.end || {},
-          eventId:   ev.id || ''
+          sessionNr:   state.sessionNr || '',
+          type:        state.type || '',
+          taskId:      state.taskId || '',
+          taskLink:    state.taskLink || '',
+          summary:     ev.summary || '',
+          description: ev.description || '',
+          start:       ev.start,
+          end:         ev.end || {},
+          eventId:     ev.id || ''
         }
       }
     }, { merge: true });
@@ -2195,7 +2200,9 @@ async function loadSessionStatesFromFirestore() {
         sessionStates[idx].sessionNr = s.sessionNr || '';
         sessionStates[idx].type      = s.type || '';
         sessionStates[idx].taskId    = s.taskId || '';
+        sessionStates[idx].taskLink  = s.taskLink || '';
         sessionStates[idx].expanded  = false;
+        if (s.description && !calendarEvents[idx].description) calendarEvents[idx].description = s.description;
       }
     });
   } catch (e) {
@@ -2214,8 +2221,8 @@ async function loadSavedSessionsFromFirestore() {
     for (const s of Object.values(saved)) {
       if (!s.eventId || !s.start) continue;
       pairs.push({
-        ev: { id: s.eventId, summary: s.summary || '(zonder titel)', start: s.start, end: s.end || {} },
-        st: { sessionNr: s.sessionNr || '', type: s.type || '', taskId: s.taskId || '', expanded: false }
+        ev: { id: s.eventId, summary: s.summary || '(zonder titel)', description: s.description || '', start: s.start, end: s.end || {} },
+        st: { sessionNr: s.sessionNr || '', type: s.type || '', taskId: s.taskId || '', taskLink: s.taskLink || '', expanded: false }
       });
     }
     pairs.sort((a, b) =>
@@ -2288,7 +2295,7 @@ async function searchCalendarSessions() {
     for (const ev of (data.items || [])) {
       if (!existingIds.has(ev.id)) {
         calendarEvents.push(ev);
-        sessionStates.push({ sessionNr: '', type: '', taskId: '', expanded: true });
+        sessionStates.push({ sessionNr: '', type: '', taskId: '', taskLink: '', expanded: true });
         added++;
       }
     }
