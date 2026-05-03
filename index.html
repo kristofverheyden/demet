@@ -1745,7 +1745,7 @@ function buildSessionCard(idx) {
         <div>
           <div style="font-weight:600;font-size:15px">${title}</div>
           <div style="font-size:13px;color:var(--text-muted)">${dateStr} · ${timeStr}</div>
-          <span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>${taskLine}
+          ${state.sessionNr ? `<span class="session-badge" style="background:var(--surface2);color:var(--text-muted);margin-right:4px">Sessie ${state.sessionNr}</span>` : ''}${state.type ? `<span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>` : ''}${taskLine}
           ${buildAttendanceRow(ev)}
         </div>
         <button class="session-expand-btn" onclick="toggleSession(${idx})" title="Openklappen">▾</button>
@@ -1786,6 +1786,11 @@ function buildSessionCard(idx) {
         ${collapseBtn}
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Sessienummer</label>
+        <select style="width:100%;margin-bottom:10px" onchange="setSessionNr(${idx}, this.value)">
+          <option value="">— Kies sessienummer —</option>
+          ${Array.from({length:10},(_,i)=>`<option value="${i+1}" ${state.sessionNr==i+1?'selected':''}>Sessie ${i+1}</option>`).join('')}
+        </select>
         <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Type sessie</label>
         <select style="width:100%" onchange="setSessionType(${idx}, this.value)">
           <option value="">— Kies type —</option>
@@ -1817,6 +1822,12 @@ function renderAllSessions() {
 function toggleSession(idx) {
   sessionStates[idx].expanded = !sessionStates[idx].expanded;
   rerenderCard(idx);
+}
+
+function setSessionNr(idx, nr) {
+  sessionStates[idx].sessionNr = nr;
+  rerenderCard(idx);
+  saveSessionStateToFirestore(idx);
 }
 
 async function setSessionType(idx, type) {
@@ -1870,13 +1881,13 @@ async function saveSessionStateToFirestore(idx) {
   if (!fbAuth.currentUser || !userPrefs.courseId) return;
   const ev    = calendarEvents[idx];
   const state = sessionStates[idx];
-  if (!ev || !state.type) return;
+  if (!ev || (!state.type && !state.sessionNr)) return;
   const uid    = fbAuth.currentUser.uid;
   const safeId = sessionSafeId(ev.id);
   try {
     await db.collection('sessions')
       .doc(`${uid}_${userPrefs.courseId}`)
-      .set({ events: { [safeId]: { type: state.type, taskId: state.taskId || '' } } }, { merge: true });
+      .set({ events: { [safeId]: { sessionNr: state.sessionNr || '', type: state.type, taskId: state.taskId || '' } } }, { merge: true });
   } catch (e) {
     console.warn('Sessie opslaan mislukt:', e);
   }
@@ -1891,10 +1902,11 @@ async function loadSessionStatesFromFirestore() {
     const saved = snap.data().events || {};
     calendarEvents.forEach((ev, idx) => {
       const s = saved[sessionSafeId(ev.id)];
-      if (s && s.type) {
-        sessionStates[idx].type     = s.type;
-        sessionStates[idx].taskId   = s.taskId || '';
-        sessionStates[idx].expanded = false;
+      if (s && (s.type || s.sessionNr)) {
+        sessionStates[idx].sessionNr = s.sessionNr || '';
+        sessionStates[idx].type      = s.type || '';
+        sessionStates[idx].taskId    = s.taskId || '';
+        sessionStates[idx].expanded  = false;
       }
     });
   } catch (e) {
@@ -1945,7 +1957,7 @@ async function searchCalendarSessions() {
     if (data.error) throw new Error(data.error.message);
 
     calendarEvents = data.items || [];
-    sessionStates  = calendarEvents.map(() => ({ type: '', taskId: '', expanded: true }));
+    sessionStates  = calendarEvents.map(() => ({ sessionNr: '', type: '', taskId: '', expanded: true }));
     await loadSessionStatesFromFirestore();
     document.getElementById('sessionStatus').className = 'status';
     renderAllSessions();
