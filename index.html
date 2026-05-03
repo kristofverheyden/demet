@@ -318,6 +318,18 @@
     background: var(--accent-light); color: var(--accent-text);
     border-radius: 20px; font-weight: 600; display: none;
   }
+  .session-badge {
+    display: inline-block; font-size: 11px; padding: 2px 9px;
+    border-radius: 20px; font-weight: 600; margin-top: 5px;
+    background: var(--accent-light); color: var(--accent-text);
+  }
+  .session-card-collapsed { cursor: default; }
+  .session-expand-btn {
+    flex-shrink: 0; width: 28px; height: 28px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface); cursor: pointer;
+    font-size: 12px; display: flex; align-items: center; justify-content: center;
+  }
+  .session-expand-btn:hover { background: var(--surface2); }
 
   /* AI row */
   .ai-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
@@ -636,6 +648,9 @@ let studentData = [];
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
+let calendarEvents   = [];
+let sessionStates    = []; // { type, taskId, expanded }
+let sessionAssignments = null; // null = niet geladen
 
 // Herstel sessie via Firebase Auth
 fbAuth.onAuthStateChanged(async user => {
@@ -1626,60 +1641,186 @@ async function sendCurrentFeedback() {
 }
 
 // ── Tijdens de sessie ──────────────────────────────────────────
+const SESSION_TYPE_LABELS = {
+  'fast-track':   '⚡ Fast track',
+  'zonder-taak':  '📋 Gewone sessie',
+  'met-taak':     '📝 Sessie met taak'
+};
+
+function fmtTime(dt) {
+  return dt.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' });
+}
+
+function sessionDateStr(ev) {
+  const dt = new Date(ev.start.dateTime || ev.start.date);
+  return dt.toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function sessionTimeStr(ev) {
+  if (!ev.start.dateTime) return 'Hele dag';
+  return `${fmtTime(new Date(ev.start.dateTime))} – ${fmtTime(new Date(ev.end.dateTime))}`;
+}
+
+function buildSessionCard(idx) {
+  const ev    = calendarEvents[idx];
+  const state = sessionStates[idx];
+  const div   = document.createElement('div');
+  div.className = 'card';
+  div.id        = `sess-${idx}`;
+  div.style.marginBottom = '12px';
+
+  const title    = ev.summary || '(geen titel)';
+  const dateStr  = sessionDateStr(ev);
+  const timeStr  = sessionTimeStr(ev);
+
+  if (!state.expanded && state.type) {
+    // ── ingeklapt ──
+    const taskLine = state.type === 'met-taak' && state.taskId
+      ? `<span style="font-size:12px;color:var(--text-muted);margin-left:6px">${getSessionTaskName(state.taskId)}</span>` : '';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div>
+          <div style="font-weight:600;font-size:15px">${title}</div>
+          <div style="font-size:13px;color:var(--text-muted)">${dateStr} · ${timeStr}</div>
+          <span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>${taskLine}
+        </div>
+        <button class="session-expand-btn" onclick="toggleSession(${idx})" title="Openklappen">▾</button>
+      </div>`;
+  } else {
+    // ── uitgeklapt ──
+    let taskSel = '';
+    if (state.type === 'met-taak') {
+      if (sessionAssignments === null) {
+        taskSel = '<p style="font-size:13px;color:var(--text-muted);margin-top:8px">Taken laden…</p>';
+      } else if (sessionAssignments.length === 0) {
+        taskSel = '<p style="font-size:13px;color:var(--text-muted);margin-top:8px">Geen taken gevonden voor dit vak.</p>';
+      } else {
+        const opts = sessionAssignments.map(a =>
+          `<option value="${a.id}" ${state.taskId === a.id ? 'selected' : ''}>${a.title}</option>`
+        ).join('');
+        taskSel = `
+          <div class="field" style="margin-top:8px">
+            <label>Taak</label>
+            <select onchange="setSessionTask(${idx}, this.value)">
+              <option value="">— Kies taak —</option>${opts}
+            </select>
+          </div>`;
+      }
+    }
+    const collapseBtn = state.type
+      ? `<button class="session-expand-btn" onclick="toggleSession(${idx})" title="Inklappen">▴</button>` : '';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:15px;margin-bottom:4px">${title}</div>
+          <div style="font-size:13px;color:var(--text-muted)">${dateStr}</div>
+          <div style="font-size:13px;color:var(--text-muted)">${timeStr}</div>
+          ${ev.location    ? `<div style="font-size:13px;color:var(--text-muted);margin-top:3px">📍 ${ev.location}</div>` : ''}
+          ${ev.description ? `<div style="font-size:13px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);white-space:pre-line">${ev.description}</div>` : ''}
+        </div>
+        ${collapseBtn}
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Type sessie</label>
+        <select style="width:100%" onchange="setSessionType(${idx}, this.value)">
+          <option value="">— Kies type —</option>
+          <option value="fast-track"  ${state.type === 'fast-track'  ? 'selected' : ''}>⚡ Fast track</option>
+          <option value="zonder-taak" ${state.type === 'zonder-taak' ? 'selected' : ''}>📋 Gewone sessie (zonder taak)</option>
+          <option value="met-taak"    ${state.type === 'met-taak'    ? 'selected' : ''}>📝 Sessie met taak</option>
+        </select>
+        ${taskSel}
+      </div>`;
+  }
+  return div;
+}
+
+function rerenderCard(idx) {
+  const old = document.getElementById(`sess-${idx}`);
+  if (old) old.replaceWith(buildSessionCard(idx));
+}
+
+function renderAllSessions() {
+  const container = document.getElementById('sessionResults');
+  container.innerHTML = '';
+  if (calendarEvents.length === 0) {
+    container.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:16px">Geen sessies gevonden voor dit zoekwoord en deze periode.</p>';
+    return;
+  }
+  calendarEvents.forEach((_, idx) => container.appendChild(buildSessionCard(idx)));
+}
+
+function toggleSession(idx) {
+  sessionStates[idx].expanded = !sessionStates[idx].expanded;
+  rerenderCard(idx);
+}
+
+async function setSessionType(idx, type) {
+  sessionStates[idx].type   = type;
+  sessionStates[idx].taskId = '';
+  if (type === 'met-taak' && sessionAssignments === null) {
+    rerenderCard(idx); // toon "laden…"
+    await loadSessionAssignments();
+  }
+  if (type && type !== 'met-taak') sessionStates[idx].expanded = false;
+  rerenderCard(idx);
+}
+
+function setSessionTask(idx, taskId) {
+  sessionStates[idx].taskId = taskId;
+  if (taskId) sessionStates[idx].expanded = false;
+  rerenderCard(idx);
+}
+
+function getSessionTaskName(taskId) {
+  if (!sessionAssignments) return '';
+  return (sessionAssignments.find(a => a.id === taskId) || {}).title || '';
+}
+
+async function loadSessionAssignments() {
+  const courseId = userPrefs.courseId;
+  if (!courseId) { sessionAssignments = []; return; }
+  try {
+    const res  = await fetch(
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork?pageSize=100&orderBy=updateTime%20desc`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const data = await res.json();
+    sessionAssignments = (data.courseWork || []).map(w => ({ id: w.id, title: w.title }));
+  } catch (e) {
+    sessionAssignments = [];
+    console.warn('Taken laden mislukt:', e);
+  }
+}
+
 async function searchCalendarSessions() {
-  const keyword   = document.getElementById('sessionKeyword').value.trim();
-  const startVal  = document.getElementById('sessionStartDate').value;
-  const weeks     = Math.max(1, parseInt(document.getElementById('sessionWeeks').value) || 4);
+  const keyword  = document.getElementById('sessionKeyword').value.trim();
+  const startVal = document.getElementById('sessionStartDate').value;
+  const weeks    = Math.max(1, parseInt(document.getElementById('sessionWeeks').value) || 4);
 
   if (!keyword)  { showStatus('sessionStatus', 'Vul een zoekwoord in.', 'error'); return; }
   if (!startVal) { showStatus('sessionStatus', 'Kies een startdatum.', 'error'); return; }
 
-  // Instellingen bewaren
   localStorage.setItem('demetSessionKeyword', keyword);
   localStorage.setItem('demetSessionWeeks', weeks);
 
   const timeMin = new Date(startVal).toISOString();
   const timeMax = new Date(new Date(startVal).getTime() + weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  showStatus('sessionStatus', 'Agenda ophalen...', 'success');
+  showStatus('sessionStatus', 'Agenda ophalen…', 'success');
   document.getElementById('sessionResults').innerHTML = '';
 
   try {
     const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
-      `q=${encodeURIComponent(keyword)}` +
-      `&timeMin=${encodeURIComponent(timeMin)}` +
-      `&timeMax=${encodeURIComponent(timeMax)}` +
+      `q=${encodeURIComponent(keyword)}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}` +
       `&singleEvents=true&orderBy=startTime&maxResults=100`;
     const res  = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     const data = await res.json();
     if (data.error) throw new Error(data.error.message);
 
-    const events = data.items || [];
+    calendarEvents = data.items || [];
+    sessionStates  = calendarEvents.map(() => ({ type: '', taskId: '', expanded: true }));
     document.getElementById('sessionStatus').className = 'status';
-
-    const container = document.getElementById('sessionResults');
-    if (events.length === 0) {
-      container.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:16px">Geen sessies gevonden voor dit zoekwoord en deze periode.</p>';
-      return;
-    }
-
-    container.innerHTML = events.map(ev => {
-      const isAllDay  = !ev.start.dateTime;
-      const startDt   = new Date(ev.start.dateTime || ev.start.date);
-      const endDt     = new Date(ev.end.dateTime   || ev.end.date);
-      const dateStr   = startDt.toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-      const timeStr   = isAllDay
-        ? 'Hele dag'
-        : `${startDt.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })} – ${endDt.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`;
-      return `
-        <div class="card" style="margin-bottom:12px">
-          <div style="font-weight:600;font-size:15px;margin-bottom:6px">${ev.summary || '(geen titel)'}</div>
-          <div style="font-size:13px;color:var(--text-muted)">${dateStr}</div>
-          <div style="font-size:13px;color:var(--text-muted);margin-bottom:${ev.location || ev.description ? '8px' : '0'}">${timeStr}</div>
-          ${ev.location    ? `<div style="font-size:13px;color:var(--text-muted)">📍 ${ev.location}</div>` : ''}
-          ${ev.description ? `<div style="font-size:13px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);white-space:pre-line">${ev.description}</div>` : ''}
-        </div>`;
-    }).join('');
+    renderAllSessions();
   } catch (e) {
     showStatus('sessionStatus', 'Fout: ' + e.message, 'error');
   }
@@ -1690,10 +1831,8 @@ function initSessionPage() {
   const weeks = localStorage.getItem('demetSessionWeeks');
   if (kw)    document.getElementById('sessionKeyword').value = kw;
   if (weeks) document.getElementById('sessionWeeks').value   = weeks;
-  // Standaard startdatum = vandaag
-  if (!document.getElementById('sessionStartDate').value) {
+  if (!document.getElementById('sessionStartDate').value)
     document.getElementById('sessionStartDate').value = new Date().toISOString().slice(0, 10);
-  }
 }
 </script>
 </body>
