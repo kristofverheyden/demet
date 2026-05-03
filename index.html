@@ -593,7 +593,8 @@ const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.coursework.students',
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
-  'https://www.googleapis.com/auth/classroom.topics.readonly'
+  'https://www.googleapis.com/auth/classroom.topics.readonly',
+  'https://www.googleapis.com/auth/gmail.send'
 ];
 let accessToken = null;
 let students = [];
@@ -1093,6 +1094,44 @@ function markdownToHtml(text) {
   return parts.join('');
 }
 
+async function copyFeedback() {
+  const el = document.getElementById('current-note');
+  const btn = document.getElementById('copyFeedbackBtn');
+  if (!el) return;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({
+      'text/html': new Blob([el.innerHTML], { type: 'text/html' }),
+      'text/plain': new Blob([el.innerText], { type: 'text/plain' })
+    })]);
+  } catch (_) {
+    await navigator.clipboard.writeText(el.innerText);
+  }
+  if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = '⎘', 1500); }
+}
+
+async function sendEmailFeedback(toEmail, subject, htmlBody) {
+  const subjectEncoded = '=?UTF-8?B?' + btoa(unescape(encodeURIComponent(subject))) + '?=';
+  const raw = [
+    `To: ${toEmail}`,
+    `Subject: ${subjectEncoded}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6">${htmlBody}</div>`
+  ].join('\r\n');
+  const encoded = btoa(unescape(encodeURIComponent(raw)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: encoded })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'E-mail kon niet verstuurd worden');
+  }
+}
+
 function formatFeedback(command) {
   const el = document.getElementById('current-note');
   if (!el || el.contentEditable === 'false') return;
@@ -1139,13 +1178,15 @@ async function showStudent(index) {
     </div>
     ` : ''}
     <label>Feedback</label>
-    ${!d.sent ? `
     <div class="feedback-toolbar">
+      ${!d.sent ? `
       <button type="button" class="fmt-btn" onclick="formatFeedback('bold')" title="Vet"><b>V</b></button>
       <button type="button" class="fmt-btn" onclick="formatFeedback('underline')" title="Onderlijnen"><u>O</u></button>
       <button type="button" class="fmt-btn" onclick="formatFeedback('insertUnorderedList')" title="Opsomming">&#8801;</button>
+      <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 2px;align-self:center"></span>
+      ` : ''}
+      <button type="button" class="fmt-btn" id="copyFeedbackBtn" onclick="copyFeedback()" title="Kopiëren">⎘</button>
     </div>
-    ` : ''}
     <div id="current-note" class="feedback-editor" contenteditable="${d.sent ? 'false' : 'true'}" data-placeholder="Feedback voor ${firstName}...">${d.note}</div>
   `;
 
@@ -1448,6 +1489,27 @@ async function sendCurrentFeedback() {
       });
     } catch (fsErr) {
       console.warn('Feedback opslaan in Firestore mislukt:', fsErr);
+    }
+
+    // Stuur e-mail naar leerling via Gmail
+    const studentEmail = students[i].profile.emailAddress;
+    if (studentEmail && d.note) {
+      try {
+        const assignSel = document.getElementById('assignmentSelect');
+        const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
+        await sendEmailFeedback(
+          studentEmail,
+          `Feedback ${userPrefs.courseName} – ${assignName}`,
+          d.note
+        );
+      } catch (mailErr) {
+        console.warn('E-mail versturen mislukt:', mailErr);
+        showStatus('sendStatus', `Feedback verstuurd ✓ (e-mail mislukt: ${mailErr.message})`, 'success');
+        studentData[i].sent = true;
+        document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
+        showStudent(i);
+        return;
+      }
     }
 
     studentData[i].sent = true;
