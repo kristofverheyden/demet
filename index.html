@@ -1074,6 +1074,25 @@ async function loadStudents() {
   }
 }
 
+function markdownToHtml(text) {
+  const lines = text.split('\n');
+  const parts = [];
+  let inList = false;
+  for (const line of lines) {
+    const esc = line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    if (/^- /.test(line)) {
+      if (!inList) { parts.push('<ul>'); inList = true; }
+      parts.push(`<li>${esc.slice(2)}</li>`);
+    } else {
+      if (inList) { parts.push('</ul>'); inList = false; }
+      parts.push(esc ? esc + '<br>' : '<br>');
+    }
+  }
+  if (inList) parts.push('</ul>');
+  return parts.join('');
+}
+
 function formatFeedback(command) {
   const el = document.getElementById('current-note');
   if (!el || el.contentEditable === 'false') return;
@@ -1360,11 +1379,7 @@ Geen herhaling tussen Medals en Missions.`;
       throw new Error(err.error?.message || `HTTP ${res.status}`);
     }
     const data = await res.json();
-    const plainText = data.content[0].text.trim();
-    noteEl.innerHTML = plainText
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\n/g, '<br>');
+    noteEl.innerHTML = markdownToHtml(data.content[0].text.trim());
     aiBtn.textContent = '✨ Genereer';
     aiBtn.disabled = false;
   } catch (e) {
