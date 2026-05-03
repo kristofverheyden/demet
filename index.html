@@ -709,7 +709,8 @@ const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.topics.readonly',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/calendar.readonly'
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/spreadsheets.readonly'
 ];
 let accessToken = null;
 let students = [];
@@ -2411,6 +2412,20 @@ function renderVestigingBody(v) {
     <div id="coachLoadStatus-${v}" class="status" style="margin-top:6px"></div>
   </div>`;
 
+  html += `<div style="margin-bottom:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm)">
+    <div style="font-size:13px;font-weight:600;margin-bottom:8px">📊 Koppelen via Google Spreadsheet</div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px">
+      Maak een spreadsheet met in kolom A de naam van de leerling en in kolom B het e-mailadres van de coach.
+      Plak hieronder de link naar de spreadsheet en klik op Importeren.
+    </p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="coachSheetUrl-${v}" placeholder="https://docs.google.com/spreadsheets/d/..."
+        style="flex:1;min-width:200px;font-size:13px">
+      <button style="white-space:nowrap" onclick="importCoachSheet('${v}')">Importeren</button>
+    </div>
+    <div id="coachSheetStatus-${v}" class="status" style="margin-top:6px"></div>
+  </div>`;
+
   const nActive = dat.coaches.filter(c => c.isCoach !== false).length;
   html += `<div class="coach-section">
     <div class="coach-section-header" onclick="togglePersonSection('${v}','coaches')">
@@ -2603,6 +2618,79 @@ async function loadCourseForVestiging(v) {
     if (statusEl) showStatusEl(statusEl, 'Fout: ' + e.message, 'error');
   } finally {
     coachState[v].loading = false;
+  }
+}
+
+async function importCoachSheet(v) {
+  const input    = document.getElementById(`coachSheetUrl-${v}`);
+  const statusEl = document.getElementById(`coachSheetStatus-${v}`);
+  const url      = (input?.value || '').trim();
+  if (!url) { showStatusEl(statusEl, 'Plak eerst een spreadsheet-link.', 'error'); return; }
+
+  // Haal spreadsheet-ID op uit de URL
+  const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) { showStatusEl(statusEl, 'Ongeldige spreadsheet-link.', 'error'); return; }
+  const sheetId = match[1];
+
+  showStatusEl(statusEl, 'Spreadsheet laden…', '');
+
+  try {
+    const res  = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:B`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const rows = (data.values || []).filter(r => r.length >= 2);
+    if (!rows.length) { showStatusEl(statusEl, 'Geen gegevens gevonden in de spreadsheet.', 'error'); return; }
+
+    const dat          = coachData[v];
+    const activeCoaches = dat.coaches.filter(c => c.isCoach !== false);
+
+    // Bouw lookup: naam (lowercase trim) → leerling, email (lowercase) → coach
+    const leerlingByName = new Map(
+      dat.leerlingen.map(l => [l.name.trim().toLowerCase(), l])
+    );
+    const coachByEmail = new Map(
+      activeCoaches.map(c => [(c.email || '').trim().toLowerCase(), c])
+    );
+
+    let gekoppeld = 0, onbekendLeerling = [], onbekendCoach = [];
+    const batch = db.batch();
+
+    for (const row of rows) {
+      const leerlingNaam  = (row[0] || '').trim();
+      const coachEmail    = (row[1] || '').trim().toLowerCase();
+      if (!leerlingNaam && !coachEmail) continue;
+
+      const leerling = leerlingByName.get(leerlingNaam.toLowerCase());
+      if (!leerling) { onbekendLeerling.push(leerlingNaam); continue; }
+
+      const coach = coachByEmail.get(coachEmail);
+      if (!coach)  { onbekendCoach.push(coachEmail); continue; }
+
+      if (leerling.coachId !== coach.id) {
+        leerling.coachId = coach.id;
+        batch.update(db.collection('leerlingen').doc(leerling.id), { coachId: coach.id });
+        gekoppeld++;
+      }
+    }
+
+    await batch.commit();
+
+    // Bouw statusbericht
+    let msg = `${gekoppeld} koppeling(en) bijgewerkt.`;
+    if (onbekendLeerling.length) msg += ` Niet gevonden: ${onbekendLeerling.slice(0,5).join(', ')}${onbekendLeerling.length > 5 ? '…' : ''}.`;
+    if (onbekendCoach.length)   msg += ` Onbekend coach-e-mail: ${onbekendCoach.slice(0,3).join(', ')}${onbekendCoach.length > 3 ? '…' : ''}.`;
+    showStatusEl(statusEl, msg, 'ok');
+
+    // Herrender leerlingentabel
+    coachState[v].leerlingenOpen = true;
+    const vesBody = document.getElementById(`vest-body-${v}`);
+    if (vesBody) vesBody.innerHTML = renderVestigingBody(v);
+  } catch(e) {
+    showStatusEl(statusEl, 'Fout: ' + e.message, 'error');
   }
 }
 
