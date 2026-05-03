@@ -330,6 +330,26 @@
     font-size: 12px; display: flex; align-items: center; justify-content: center;
   }
   .session-expand-btn:hover { background: var(--surface2); }
+  .session-group-header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 16px; background:var(--accent-light); border-radius:var(--radius-sm);
+    margin:20px 0 8px; font-weight:700; font-size:15px; color:var(--accent-text);
+  }
+  .session-group-header:first-child { margin-top:0; }
+  .btn-att {
+    font-size:12px; padding:5px 12px; border:1px solid var(--accent);
+    border-radius:6px; background:white; color:var(--accent); cursor:pointer; font-weight:500;
+  }
+  .btn-att:hover { background:var(--accent-light); }
+  .attendance-panel { background:white; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:12px; }
+  .att-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .att-table th { background:var(--surface); padding:8px 12px; text-align:left; font-weight:600; border-bottom:2px solid var(--border); white-space:nowrap; }
+  .att-table td { padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .att-table tr:last-child td { border-bottom:none; }
+  .att-btn { padding:4px 10px; border-radius:20px; border:none; cursor:pointer; font-size:12px; font-weight:600; white-space:nowrap; transition:all .15s; }
+  .att-btn.afwezig     { background:#f0f0f0; color:#555; }
+  .att-btn.aanwezig    { background:#e8f5e9; color:#1b5e20; }
+  .att-btn.niet-school { background:#fdecea; color:#b71c1c; }
   .attend-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   .attend-chip {
     position: relative; display: inline-flex; align-items: center; gap: 4px;
@@ -663,11 +683,14 @@ let studentData = [];
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
-let calendarEvents     = [];
-let sessionStates      = []; // { type, taskId, expanded }
-let sessionAssignments = null; // null = niet geladen
-let sessionRosterEmails = null; // Set van e-mailadressen (voor snelle lookup)
-let sessionRoster       = null; // Array van {email, name} voor groepsweergave
+let calendarEvents      = [];
+let sessionStates       = []; // { sessionNr, type, taskId, expanded }
+let sessionAssignments  = null;
+let sessionRosterEmails = null;
+let sessionRoster       = null; // Array van {email, name, userId}
+let sessionGroupMap     = {};   // safeKey → { label, indices }
+let manualAttendance    = {};   // safeKey → { safeEmail → status }
+let sessionSubmissions  = {};   // taskId → { userId → { state, draftGrade, assignedGrade } }
 
 // Herstel sessie via Firebase Auth
 fbAuth.onAuthStateChanged(async user => {
@@ -1821,11 +1844,221 @@ function rerenderCard(idx) {
 function renderAllSessions() {
   const container = document.getElementById('sessionResults');
   container.innerHTML = '';
+  sessionGroupMap = {};
   if (calendarEvents.length === 0) {
     container.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:16px">Geen sessies gevonden voor dit zoekwoord en deze periode.</p>';
     return;
   }
-  calendarEvents.forEach((_, idx) => container.appendChild(buildSessionCard(idx)));
+
+  const grouped = new Map();
+  const ungrouped = [];
+  calendarEvents.forEach((_, idx) => {
+    const nr = sessionStates[idx].sessionNr;
+    if (nr) {
+      const sk = sessionSafeId(String(nr));
+      const label = isNaN(parseInt(nr)) ? nr : `Sessie ${nr}`;
+      if (!grouped.has(sk)) grouped.set(sk, { label, indices: [] });
+      grouped.get(sk).indices.push(idx);
+    } else {
+      ungrouped.push(idx);
+    }
+  });
+
+  // Numeriek eerst (1,2…10), daarna alfabetisch (Fast track…)
+  const sortedKeys = [...grouped.keys()].sort((a, b) => {
+    const la = grouped.get(a).label, lb = grouped.get(b).label;
+    const na = parseInt(la), nb = parseInt(lb);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na)) return -1;
+    if (!isNaN(nb)) return 1;
+    return la.localeCompare(lb, 'nl');
+  });
+
+  for (const sk of sortedKeys) {
+    sessionGroupMap[sk] = grouped.get(sk);
+    const hdr = document.createElement('div');
+    hdr.className = 'session-group-header';
+    hdr.id = `grp-${sk}`;
+    hdr.innerHTML = `<span>${grouped.get(sk).label}</span>
+      <button class="btn-att" onclick="toggleAttendancePanel('${sk}')">👥 Aanwezigheden</button>`;
+    container.appendChild(hdr);
+    grouped.get(sk).indices.forEach(idx => container.appendChild(buildSessionCard(idx)));
+  }
+
+  if (ungrouped.length > 0) {
+    if (sortedKeys.length > 0) {
+      const hdr = document.createElement('div');
+      hdr.className = 'session-group-header';
+      hdr.style.cssText = 'background:var(--surface2);color:var(--text-muted)';
+      hdr.innerHTML = '<span>Niet ingedeeld</span>';
+      container.appendChild(hdr);
+    }
+    ungrouped.forEach(idx => container.appendChild(buildSessionCard(idx)));
+  }
+}
+
+// ── Aanwezighedenpaneel ─────────────────────────────────────
+const ATT_CYCLE  = ['afwezig','aanwezig','niet-school'];
+const ATT_LABELS = { 'afwezig':'Afwezig', 'aanwezig':'Aanwezig', 'niet-school':'Niet op school' };
+
+function shortEvtLabel(ev) {
+  const dt  = new Date(ev.start.dateTime || ev.start.date);
+  const day  = dt.toLocaleDateString('nl-BE', { weekday:'short' });
+  const date = `${dt.getDate()}/${dt.getMonth()+1}`;
+  if (!ev.start.dateTime) return `${day} ${date}`;
+  const s = dt.toLocaleTimeString('nl-BE', { hour:'2-digit', minute:'2-digit' });
+  const e = new Date(ev.end.dateTime).toLocaleTimeString('nl-BE', { hour:'2-digit', minute:'2-digit' });
+  return `${day} ${date} ${s}-${e}`;
+}
+
+async function toggleAttendancePanel(safeKey) {
+  const panelId = `attpanel-${safeKey}`;
+  const existing = document.getElementById(panelId);
+  if (existing) { existing.remove(); return; }
+
+  const hdr = document.getElementById(`grp-${safeKey}`);
+  if (!hdr) return;
+  const panel = document.createElement('div');
+  panel.id = panelId;
+  panel.className = 'attendance-panel';
+  panel.innerHTML = '<p style="padding:16px;text-align:center;color:var(--text-muted)">Laden…</p>';
+  hdr.insertAdjacentElement('afterend', panel);
+
+  const { indices } = sessionGroupMap[safeKey] || { indices: [] };
+  await loadManualAttendance(safeKey);
+
+  const taskIdx = indices.find(i => sessionStates[i]?.type === 'met-taak' && sessionStates[i]?.taskId);
+  const taskId  = taskIdx !== undefined ? sessionStates[taskIdx].taskId : null;
+  if (taskId && !sessionSubmissions[taskId]) await loadTaskSubmissions(taskId);
+
+  renderAttendancePanel(panel, safeKey, indices, taskId);
+}
+
+function renderAttendancePanel(panel, safeKey, indices, taskId) {
+  if (!sessionRoster || sessionRoster.length === 0) {
+    panel.innerHTML = '<p style="padding:16px;color:var(--text-muted)">Voer eerst een zoekopdracht uit om leerlingen te laden.</p>';
+    return;
+  }
+
+  const students   = [...sessionRoster].sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+  const attendance = manualAttendance[safeKey] || {};
+  const subs       = taskId ? (sessionSubmissions[taskId] || null) : null;
+
+  const rows = students.map(s => {
+    const se = s.email.replace(/[^a-zA-Z0-9]/g, '_');
+
+    // Kol 2: sessies waarop leerling "ja" heeft gezegd
+    const accepted = indices
+      .map(i => calendarEvents[i])
+      .filter(ev => (ev.attendees || []).some(a =>
+        (a.email || '').toLowerCase() === s.email && a.responseStatus === 'accepted'));
+    const calCol = accepted.length
+      ? accepted.map(ev => `<span style="white-space:nowrap">${shortEvtLabel(ev)}</span>`).join('<br>')
+      : '<span style="color:#bbb">—</span>';
+
+    // Kol 3: manuele status
+    const status = attendance[se] || 'afwezig';
+
+    // Kol 4: taakstatus
+    const taskCell = taskId
+      ? `<td style="font-size:12px">${getTaskStatusLabel(subs, s.userId)}</td>` : '';
+
+    return `<tr>
+      <td style="font-weight:500">${s.name}</td>
+      <td style="font-size:12px;line-height:1.8">${calCol}</td>
+      <td><button class="att-btn ${status}" onclick="cycleAttStatus('${safeKey}','${se}',this)">${ATT_LABELS[status]}</button></td>
+      ${taskCell}
+    </tr>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div style="overflow-x:auto">
+      <table class="att-table">
+        <thead><tr>
+          <th>Leerling</th>
+          <th>Agenda (ja)</th>
+          <th>Status</th>
+          ${taskId ? '<th>Taak</th>' : ''}
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label style="font-size:13px;font-weight:500;white-space:nowrap">Mail naar:</label>
+      <select id="att-mail-${safeKey}" style="flex:1;min-width:160px">
+        <option value="">— Kies leerling —</option>
+        ${students.map(s => `<option value="${s.email}">${s.name}</option>`).join('')}
+      </select>
+      <button class="primary" disabled style="opacity:.45;cursor:not-allowed">Versturen</button>
+    </div>`;
+}
+
+function getTaskStatusLabel(subs, userId) {
+  if (!subs || !userId) return '—';
+  const sub = subs[userId];
+  if (!sub) return '<span style="color:#bbb">Niet ingediend</span>';
+  if (sub.assignedGrade != null || sub.draftGrade != null) return '<span style="color:#1b5e20">✓ Nagekeken</span>';
+  if (sub.state === 'RETURNED')  return '<span style="color:#1b5e20">✓ Teruggegeven</span>';
+  if (sub.state === 'TURNED_IN') return '<span style="color:#1565c0">✓ Ingediend</span>';
+  return '<span style="color:#bbb">Niet ingediend</span>';
+}
+
+function cycleAttStatus(safeKey, safeEmail, btn) {
+  if (!manualAttendance[safeKey]) manualAttendance[safeKey] = {};
+  const current = manualAttendance[safeKey][safeEmail] || 'afwezig';
+  const next    = ATT_CYCLE[(ATT_CYCLE.indexOf(current) + 1) % ATT_CYCLE.length];
+  manualAttendance[safeKey][safeEmail] = next;
+  btn.className   = `att-btn ${next}`;
+  btn.textContent = ATT_LABELS[next];
+  saveManualAttendance(safeKey);
+}
+
+async function loadManualAttendance(safeKey) {
+  if (!fbAuth.currentUser || !userPrefs.courseId) return;
+  if (manualAttendance[safeKey] !== undefined) return;
+  const uid = fbAuth.currentUser.uid;
+  try {
+    const snap = await db.collection('attendance')
+      .doc(`${uid}_${userPrefs.courseId}_${safeKey}`).get();
+    manualAttendance[safeKey] = snap.exists ? (snap.data().students || {}) : {};
+  } catch (e) {
+    manualAttendance[safeKey] = {};
+  }
+}
+
+async function saveManualAttendance(safeKey) {
+  if (!fbAuth.currentUser || !userPrefs.courseId) return;
+  const uid = fbAuth.currentUser.uid;
+  try {
+    await db.collection('attendance')
+      .doc(`${uid}_${userPrefs.courseId}_${safeKey}`)
+      .set({
+        students:  manualAttendance[safeKey] || {},
+        courseId:  userPrefs.courseId,
+        groupKey:  safeKey,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+  } catch (e) {
+    console.warn('Aanwezigheid opslaan mislukt:', e);
+  }
+}
+
+async function loadTaskSubmissions(taskId) {
+  if (!userPrefs.courseId) return;
+  try {
+    const res  = await fetch(
+      `https://classroom.googleapis.com/v1/courses/${userPrefs.courseId}/courseWork/${taskId}/studentSubmissions?pageSize=100`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const data = await res.json();
+    const map  = {};
+    (data.studentSubmissions || []).forEach(s => {
+      map[s.userId] = { state: s.state, draftGrade: s.draftGrade, assignedGrade: s.assignedGrade };
+    });
+    sessionSubmissions[taskId] = map;
+  } catch (e) {
+    sessionSubmissions[taskId] = {};
+  }
 }
 
 function toggleSession(idx) {
@@ -1958,8 +2191,9 @@ async function searchCalendarSessions() {
       const rosterData = await rosterRes.json();
       sessionRoster = (rosterData.students || [])
         .map(s => ({
-          email: (s.profile.emailAddress || '').toLowerCase().trim(),
-          name:  s.profile.name?.fullName || s.profile.emailAddress || ''
+          email:  (s.profile.emailAddress || '').toLowerCase().trim(),
+          name:   s.profile.name?.fullName || s.profile.emailAddress || '',
+          userId: s.userId || ''
         }))
         .filter(s => s.email);
       sessionRosterEmails = new Set(sessionRoster.map(s => s.email));
@@ -1984,9 +2218,12 @@ function initSessionPage() {
   if (!document.getElementById('sessionStartDate').value)
     document.getElementById('sessionStartDate').value = new Date().toISOString().slice(0, 10);
   // Reset cache zodat alles opnieuw geladen wordt als vak/onderwerp gewijzigd is
-  sessionRosterEmails  = null;
-  sessionRoster        = null;
-  sessionAssignments   = null;
+  sessionRosterEmails = null;
+  sessionRoster       = null;
+  sessionAssignments  = null;
+  sessionGroupMap     = {};
+  manualAttendance    = {};
+  sessionSubmissions  = {};
 }
 </script>
 </body>
