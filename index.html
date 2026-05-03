@@ -350,6 +350,9 @@
   .att-btn.afwezig     { background:#f0f0f0; color:#555; }
   .att-btn.aanwezig    { background:#e8f5e9; color:#1b5e20; }
   .att-btn.niet-school { background:#fdecea; color:#b71c1c; }
+  .att-btn.nakijken    { background:#fff3e0; color:#e65100; }
+  .att-btn.gemaakt     { background:#e8f5e9; color:#1b5e20; }
+  .att-btn.niet-gemaakt{ background:#fdecea; color:#b71c1c; }
   .coach-vestiging { border:1px solid var(--border); border-radius:var(--radius); margin-bottom:12px; overflow:hidden; }
   .coach-vestiging-header {
     display:flex; justify-content:space-between; align-items:center;
@@ -721,6 +724,7 @@ let sessionRosterEmails = null;
 let sessionRoster       = null; // Array van {email, name, userId}
 let sessionGroupMap     = {};   // safeKey → { label, indices }
 let manualAttendance    = {};   // safeKey → { safeEmail → status }
+let manualTaskChecks    = {};   // safeKey → { safeEmail → 'nakijken'|'gemaakt'|'niet-gemaakt' }
 let sessionSubmissions  = {};   // taskId → { userId → { state, draftGrade, assignedGrade } }
 
 // Herstel sessie via Firebase Auth
@@ -1912,8 +1916,9 @@ function renderAllSessions() {
     const hdr = document.createElement('div');
     hdr.className = 'session-group-header';
     hdr.id = `grp-${sk}`;
+    const grpHasTask = grouped.get(sk).indices.some(i => sessionStates[i]?.type === 'met-taak' && sessionStates[i]?.taskId);
     hdr.innerHTML = `<span>${grouped.get(sk).label}</span>
-      <button class="btn-att" onclick="toggleAttendancePanel('${sk}')">👥 Aanwezigheden</button>`;
+      <button class="btn-att" onclick="toggleAttendancePanel('${sk}')">👥 ${grpHasTask ? 'Aanwezigheden + taak' : 'Aanwezigheden'}</button>`;
     container.appendChild(hdr);
     grouped.get(sk).indices.forEach(idx => container.appendChild(buildSessionCard(idx)));
   }
@@ -1933,6 +1938,8 @@ function renderAllSessions() {
 // ── Aanwezighedenpaneel ─────────────────────────────────────
 const ATT_CYCLE  = ['afwezig','aanwezig','niet-school'];
 const ATT_LABELS = { 'afwezig':'Afwezig', 'aanwezig':'Aanwezig', 'niet-school':'Niet op school' };
+const TASK_CHECK_CYCLE  = ['nakijken','gemaakt','niet-gemaakt'];
+const TASK_CHECK_LABELS = { 'nakijken':'Nakijken', 'gemaakt':'Gemaakt', 'niet-gemaakt':'Niet gemaakt' };
 
 function shortEvtLabel(ev) {
   const dt  = new Date(ev.start.dateTime || ev.start.date);
@@ -1992,9 +1999,16 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
     // Kol 3: manuele status
     const status = attendance[se] || 'afwezig';
 
-    // Kol 4: taakstatus
-    const taskCell = taskId
-      ? `<td style="font-size:12px">${getTaskStatusLabel(subs, s.userId)}</td>` : '';
+    // Kol 4: taakstatus (Classroom info + manuele knop)
+    let taskCell = '';
+    if (taskId) {
+      const checkStatus = (manualTaskChecks[safeKey] || {})[se] || 'nakijken';
+      const classroomInfo = getTaskStatusLabel(subs, s.userId);
+      taskCell = `<td>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${classroomInfo}</div>
+        <button class="att-btn ${checkStatus}" onclick="cycleTaskCheck('${safeKey}','${se}',this)">${TASK_CHECK_LABELS[checkStatus]}</button>
+      </td>`;
+    }
 
     return `<tr>
       <td style="font-weight:500">${s.name}</td>
@@ -2046,6 +2060,16 @@ function cycleAttStatus(safeKey, safeEmail, btn) {
   saveManualAttendance(safeKey);
 }
 
+function cycleTaskCheck(safeKey, safeEmail, btn) {
+  if (!manualTaskChecks[safeKey]) manualTaskChecks[safeKey] = {};
+  const current = manualTaskChecks[safeKey][safeEmail] || 'nakijken';
+  const next    = TASK_CHECK_CYCLE[(TASK_CHECK_CYCLE.indexOf(current) + 1) % TASK_CHECK_CYCLE.length];
+  manualTaskChecks[safeKey][safeEmail] = next;
+  btn.className   = `att-btn ${next}`;
+  btn.textContent = TASK_CHECK_LABELS[next];
+  saveManualAttendance(safeKey);
+}
+
 async function loadManualAttendance(safeKey) {
   if (!fbAuth.currentUser || !userPrefs.courseId) return;
   if (manualAttendance[safeKey] !== undefined) return;
@@ -2053,9 +2077,12 @@ async function loadManualAttendance(safeKey) {
   try {
     const snap = await db.collection('attendance')
       .doc(`${uid}_${userPrefs.courseId}_${safeKey}`).get();
-    manualAttendance[safeKey] = snap.exists ? (snap.data().students || {}) : {};
+    const data = snap.exists ? snap.data() : {};
+    manualAttendance[safeKey] = data.students   || {};
+    manualTaskChecks[safeKey] = data.taskChecks || {};
   } catch (e) {
     manualAttendance[safeKey] = {};
+    manualTaskChecks[safeKey] = {};
   }
 }
 
@@ -2066,10 +2093,11 @@ async function saveManualAttendance(safeKey) {
     await db.collection('attendance')
       .doc(`${uid}_${userPrefs.courseId}_${safeKey}`)
       .set({
-        students:  manualAttendance[safeKey] || {},
-        courseId:  userPrefs.courseId,
-        groupKey:  safeKey,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        students:   manualAttendance[safeKey] || {},
+        taskChecks: manualTaskChecks[safeKey] || {},
+        courseId:   userPrefs.courseId,
+        groupKey:   safeKey,
+        updatedAt:  firebase.firestore.FieldValue.serverTimestamp()
       });
   } catch (e) {
     console.warn('Aanwezigheid opslaan mislukt:', e);
@@ -2601,6 +2629,7 @@ function initSessionPage() {
   sessionAssignments  = null;
   sessionGroupMap     = {};
   manualAttendance    = {};
+  manualTaskChecks    = {};
   sessionSubmissions  = {};
   calendarEvents      = [];
   sessionStates       = [];
