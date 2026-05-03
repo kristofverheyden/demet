@@ -2532,24 +2532,25 @@ async function loadCourseForVestiging(v) {
       pageToken = data.nextPageToken || '';
     } while (pageToken);
 
-    // Delete old entries for this vestiging, then write new ones
-    const batch1 = db.batch();
-    const oldCoaches    = await db.collection('coaches').where('vestiging','==',v).get();
-    const oldLeerlingen = await db.collection('leerlingen').where('vestiging','==',v).get();
-    oldCoaches.docs.forEach(d => batch1.delete(d.ref));
-    oldLeerlingen.docs.forEach(d => batch1.delete(d.ref));
-    await batch1.commit();
+    // Alleen nieuwe personen toevoegen (op basis van e-mail)
+    const existingCoachEmails    = new Set(coachData[v].coaches.map(c => (c.email||'').toLowerCase()));
+    const existingLeerlingEmails = new Set(coachData[v].leerlingen.map(l => (l.email||'').toLowerCase()));
 
-    const batch2 = db.batch();
-    teachers.forEach(t => {
-      const ref = db.collection('coaches').doc();
-      batch2.set(ref, { ...t, vestiging:v, courseId, courseName, isCoach:true, aangemaakt: new Date().toISOString() });
-    });
-    students.forEach(s => {
-      const ref = db.collection('leerlingen').doc();
-      batch2.set(ref, { ...s, vestiging:v, courseId, courseName, coachId:null, aangemaakt: new Date().toISOString() });
-    });
-    await batch2.commit();
+    const newTeachers = teachers.filter(t => !existingCoachEmails.has((t.email||'').toLowerCase()));
+    const newStudents = students.filter(s => !existingLeerlingEmails.has((s.email||'').toLowerCase()));
+
+    if (newTeachers.length + newStudents.length > 0) {
+      const batch = db.batch();
+      newTeachers.forEach(t => {
+        const ref = db.collection('coaches').doc();
+        batch.set(ref, { ...t, vestiging:v, courseId, courseName, isCoach:true, aangemaakt: new Date().toISOString() });
+      });
+      newStudents.forEach(s => {
+        const ref = db.collection('leerlingen').doc();
+        batch.set(ref, { ...s, vestiging:v, courseId, courseName, coachId:null, aangemaakt: new Date().toISOString() });
+      });
+      await batch.commit();
+    }
 
     // Reload from Firestore so IDs are available in memory
     const cSnap = await db.collection('coaches').where('vestiging','==',v).get();
@@ -2559,7 +2560,10 @@ async function loadCourseForVestiging(v) {
 
     coachState[v].coachesOpen    = true;
     coachState[v].leerlingenOpen = true;
-    if (statusEl) showStatusEl(statusEl, `${teachers.length} coaches en ${students.length} leerlingen opgeslagen.`, 'ok');
+    const msg = newTeachers.length + newStudents.length > 0
+      ? `${newTeachers.length} nieuwe coach(es) en ${newStudents.length} nieuwe leerling(en) toegevoegd.`
+      : 'Geen nieuwe personen gevonden (iedereen stond al in de lijst).';
+    if (statusEl) showStatusEl(statusEl, msg, 'ok');
     const vesBody = document.getElementById(`vest-body-${v}`);
     if (vesBody) vesBody.innerHTML = renderVestigingBody(v);
   } catch(e) {
