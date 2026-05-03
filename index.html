@@ -666,7 +666,8 @@ let cachedPrompts = [];
 let calendarEvents     = [];
 let sessionStates      = []; // { type, taskId, expanded }
 let sessionAssignments = null; // null = niet geladen
-let sessionRosterEmails = null; // Set van e-mailadressen van leerlingen in het vak
+let sessionRosterEmails = null; // Set van e-mailadressen (voor snelle lookup)
+let sessionRoster       = null; // Array van {email, name} voor groepsweergave
 
 // Herstel sessie via Firebase Auth
 fbAuth.onAuthStateChanged(async user => {
@@ -1658,23 +1659,47 @@ async function sendCurrentFeedback() {
 
 // ── Tijdens de sessie ──────────────────────────────────────────
 function buildAttendanceRow(ev) {
-  let all = (ev.attendees || []).filter(a => !a.self && !a.organizer);
-  // Toon alleen individuele leerlingen uit het Classroom-roster (filtert groeps-e-mails weg)
-  if (sessionRosterEmails && sessionRosterEmails.size > 0)
-    all = all.filter(a => sessionRosterEmails.has((a.email || '').toLowerCase().trim()));
-  if (all.length === 0) return '';
-  const ja         = all.filter(a => a.responseStatus === 'accepted');
-  const nee        = all.filter(a => a.responseStatus === 'declined');
-  const afwachting = all.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative');
-  function chip(label, bg, color, list) {
-    if (!list.length) return '';
-    const names = list.map(a => a.displayName || a.email).join('<br>');
-    return `<span class="attend-chip" style="background:${bg};color:${color}">${label} ${list.length}<span class="att-tooltip">${names}</span></span>`;
+  const nonSelf = (ev.attendees || []).filter(a => !a.self && !a.organizer);
+  if (nonSelf.length === 0) return '';
+
+  function chip(label, bg, color, names) {
+    if (!names.length) return '';
+    return `<span class="attend-chip" style="background:${bg};color:${color}">${label} ${names.length}<span class="att-tooltip">${names.join('<br>')}</span></span>`;
   }
+
+  // Als het roster geladen is: splits in individuele leerlingen vs groeps-e-mails
+  if (sessionRosterEmails && sessionRosterEmails.size > 0) {
+    const direct = nonSelf.filter(a => sessionRosterEmails.has((a.email || '').toLowerCase().trim()));
+    const groups  = nonSelf.filter(a => !sessionRosterEmails.has((a.email || '').toLowerCase().trim()));
+
+    if (direct.length === 0 && groups.length > 0) {
+      // Alleen groepen uitgenodigd → toon alle roster-leerlingen als "via groep"
+      const names = (sessionRoster || []).map(s => s.name).filter(Boolean);
+      if (!names.length) return '';
+      const chips = `<span class="attend-chip" style="background:#e8f0fe;color:#1a56db">👥 Via groep ${names.length}<span class="att-tooltip">${names.join('<br>')}</span></span>`;
+      return `<div class="attend-chips">${chips}</div>`;
+    }
+
+    // Mix: individuele RSVP's aanwezig (groeps-e-mails worden genegeerd)
+    const ja         = direct.filter(a => a.responseStatus === 'accepted').map(a => a.displayName || a.email);
+    const nee        = direct.filter(a => a.responseStatus === 'declined').map(a => a.displayName || a.email);
+    const afwachting = direct.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative').map(a => a.displayName || a.email);
+    const chips = [
+      chip('✓ Ja', '#e8f5e9', '#1b5e20', ja),
+      chip('✗ Nee', '#fdecea', '#b71c1c', nee),
+      chip('⏳ Afwachting', '#fff8e1', '#6d4c00', afwachting)
+    ].filter(Boolean).join('');
+    return chips ? `<div class="attend-chips">${chips}</div>` : '';
+  }
+
+  // Geen roster geladen: toon alle attendees zonder filter
+  const ja         = nonSelf.filter(a => a.responseStatus === 'accepted').map(a => a.displayName || a.email);
+  const nee        = nonSelf.filter(a => a.responseStatus === 'declined').map(a => a.displayName || a.email);
+  const afwachting = nonSelf.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative').map(a => a.displayName || a.email);
   const chips = [
-    chip('✓ Ja',            '#e8f5e9', '#1b5e20', ja),
-    chip('✗ Nee',           '#fdecea', '#b71c1c', nee),
-    chip('⏳ Afwachting',   '#fff8e1', '#6d4c00', afwachting)
+    chip('✓ Ja', '#e8f5e9', '#1b5e20', ja),
+    chip('✗ Nee', '#fdecea', '#b71c1c', nee),
+    chip('⏳ Afwachting', '#fff8e1', '#6d4c00', afwachting)
   ].filter(Boolean).join('');
   return chips ? `<div class="attend-chips">${chips}</div>` : '';
 }
@@ -1909,11 +1934,13 @@ async function searchCalendarSessions() {
 
     if (rosterRes) {
       const rosterData = await rosterRes.json();
-      sessionRosterEmails = new Set(
-        (rosterData.students || [])
-          .map(s => (s.profile.emailAddress || '').toLowerCase().trim())
-          .filter(Boolean)
-      );
+      sessionRoster = (rosterData.students || [])
+        .map(s => ({
+          email: (s.profile.emailAddress || '').toLowerCase().trim(),
+          name:  s.profile.name?.fullName || s.profile.emailAddress || ''
+        }))
+        .filter(s => s.email);
+      sessionRosterEmails = new Set(sessionRoster.map(s => s.email));
     }
     if (data.error) throw new Error(data.error.message);
 
@@ -1936,6 +1963,7 @@ function initSessionPage() {
     document.getElementById('sessionStartDate').value = new Date().toISOString().slice(0, 10);
   // Reset cache zodat alles opnieuw geladen wordt als vak/onderwerp gewijzigd is
   sessionRosterEmails  = null;
+  sessionRoster        = null;
   sessionAssignments   = null;
 }
 </script>
