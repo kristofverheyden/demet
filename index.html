@@ -662,9 +662,10 @@ let studentData = [];
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
-let calendarEvents   = [];
-let sessionStates    = []; // { type, taskId, expanded }
+let calendarEvents     = [];
+let sessionStates      = []; // { type, taskId, expanded }
 let sessionAssignments = null; // null = niet geladen
+let sessionRosterEmails = null; // Set van e-mailadressen van leerlingen in het vak
 
 // Herstel sessie via Firebase Auth
 fbAuth.onAuthStateChanged(async user => {
@@ -1656,7 +1657,10 @@ async function sendCurrentFeedback() {
 
 // ── Tijdens de sessie ──────────────────────────────────────────
 function buildAttendanceRow(ev) {
-  const all = (ev.attendees || []).filter(a => !a.self && !a.organizer);
+  let all = (ev.attendees || []).filter(a => !a.self && !a.organizer);
+  // Toon alleen individuele leerlingen uit het Classroom-roster (filtert groeps-e-mails weg)
+  if (sessionRosterEmails && sessionRosterEmails.size > 0)
+    all = all.filter(a => sessionRosterEmails.has(a.email));
   if (all.length === 0) return '';
   const ja         = all.filter(a => a.responseStatus === 'accepted');
   const nee        = all.filter(a => a.responseStatus === 'declined');
@@ -1845,11 +1849,24 @@ async function searchCalendarSessions() {
   document.getElementById('sessionResults').innerHTML = '';
 
   try {
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+    const calUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
       `q=${encodeURIComponent(keyword)}&timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}` +
       `&singleEvents=true&orderBy=startTime&maxResults=100`;
-    const res  = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    const data = await res.json();
+    const fetchCal    = fetch(calUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const fetchRoster = userPrefs.courseId && !sessionRosterEmails
+      ? fetch(`https://classroom.googleapis.com/v1/courses/${userPrefs.courseId}/students?pageSize=100`,
+          { headers: { Authorization: `Bearer ${accessToken}` } })
+      : Promise.resolve(null);
+
+    const [calRes, rosterRes] = await Promise.all([fetchCal, fetchRoster]);
+    const data = await calRes.json();
+
+    if (rosterRes) {
+      const rosterData = await rosterRes.json();
+      sessionRosterEmails = new Set(
+        (rosterData.students || []).map(s => s.profile.emailAddress).filter(Boolean)
+      );
+    }
     if (data.error) throw new Error(data.error.message);
 
     calendarEvents = data.items || [];
@@ -1868,6 +1885,8 @@ function initSessionPage() {
   if (weeks) document.getElementById('sessionWeeks').value   = weeks;
   if (!document.getElementById('sessionStartDate').value)
     document.getElementById('sessionStartDate').value = new Date().toISOString().slice(0, 10);
+  // Reset roster zodat het opnieuw geladen wordt als het vak gewijzigd is
+  sessionRosterEmails = null;
 }
 </script>
 </body>
