@@ -446,10 +446,10 @@
     </div>
     <p style="font-size:13px;color:var(--text-muted);margin-bottom:1.25rem">Kies een module om te starten.</p>
     <div class="dashboard-grid">
-      <div class="dash-card disabled">
+      <div class="dash-card" onclick="showPage('page-session')">
         <div class="dash-icon">📅</div>
         <div class="dash-title">Tijdens de sessie</div>
-        <div class="dash-desc">Binnenkort beschikbaar</div>
+        <div class="dash-desc">Haal sessies op uit Google Agenda op basis van een zoekwoord</div>
       </div>
       <div class="dash-card" onclick="showPage('page-feedback')">
         <div class="dash-icon">✏️</div>
@@ -462,6 +462,38 @@
         <div class="dash-desc">Verdeling leerlingen, opstellen mails en beheer prompts</div>
       </div>
     </div>
+  </div>
+
+  <!-- Sessie-pagina -->
+  <div class="page" id="page-session">
+    <button class="btn-back" onclick="showPage('page-home')">← Terug naar startpagina</button>
+
+    <div class="context-bar visible" id="contextBarSession">
+      <div class="context-label" id="contextLabelSession"></div>
+      <button class="btn-change" onclick="showPage('page-setup')">Wijzigen</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Tijdens de sessie</div>
+      <div class="field">
+        <label>Zoekwoord in agenda</label>
+        <input type="text" id="sessionKeyword" placeholder="bv. remediëring, bijles, sessie...">
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:140px">
+          <label>Startdatum zoeken</label>
+          <input type="date" id="sessionStartDate">
+        </div>
+        <div class="field" style="flex:1;min-width:100px">
+          <label>Aantal weken</label>
+          <input type="number" id="sessionWeeks" value="4" min="1" max="52" style="max-width:100px">
+        </div>
+      </div>
+      <button class="primary" onclick="searchCalendarSessions()">🔍 Ophalen uit agenda</button>
+      <div class="status" id="sessionStatus"></div>
+    </div>
+
+    <div id="sessionResults"></div>
   </div>
 
   <!-- Feedbackpagina -->
@@ -595,7 +627,8 @@ const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
   'https://www.googleapis.com/auth/classroom.topics.readonly',
   'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/drive.file'
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/calendar.readonly'
 ];
 let accessToken = null;
 let students = [];
@@ -627,6 +660,7 @@ function showPage(id) {
     document.getElementById('selectStatus').className = 'status';
   }
   if (id === 'page-home') updateContextBar();
+  if (id === 'page-session') { updateContextBar(); initSessionPage(); }
   if (id === 'page-settings') loadSettingsUI();
   if (id === 'page-settings-prompt') loadPromptsFromFirestore().then(() => refreshPromptDropdown());
   if (id === 'page-setup') populateSetupCourses();
@@ -648,10 +682,13 @@ function updateContextBar() {
   const label = `<strong>${userPrefs.courseName}</strong> &nbsp;·&nbsp; ${userPrefs.topicName}`;
   const cb = document.getElementById('contextBar');
   const cbf = document.getElementById('contextBarFeedback');
+  const cbs = document.getElementById('contextBarSession');
   const cl = document.getElementById('contextLabel');
   const clf = document.getElementById('contextLabelFeedback');
+  const cls = document.getElementById('contextLabelSession');
   if (cb) { cb.classList.add('visible'); cl.innerHTML = label; }
   if (cbf) { clf.innerHTML = label; }
+  if (cbs) { cls.innerHTML = label; }
 }
 
 // ── Prompt beheer ──────────────────────────────────────────
@@ -1585,6 +1622,77 @@ async function sendCurrentFeedback() {
     btn.innerHTML = 'Versturen';
     btn.disabled = false;
     showStatus('sendStatus', 'Fout: ' + e.message, 'error');
+  }
+}
+
+// ── Tijdens de sessie ──────────────────────────────────────────
+async function searchCalendarSessions() {
+  const keyword   = document.getElementById('sessionKeyword').value.trim();
+  const startVal  = document.getElementById('sessionStartDate').value;
+  const weeks     = Math.max(1, parseInt(document.getElementById('sessionWeeks').value) || 4);
+
+  if (!keyword)  { showStatus('sessionStatus', 'Vul een zoekwoord in.', 'error'); return; }
+  if (!startVal) { showStatus('sessionStatus', 'Kies een startdatum.', 'error'); return; }
+
+  // Instellingen bewaren
+  localStorage.setItem('demetSessionKeyword', keyword);
+  localStorage.setItem('demetSessionWeeks', weeks);
+
+  const timeMin = new Date(startVal).toISOString();
+  const timeMax = new Date(new Date(startVal).getTime() + weeks * 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  showStatus('sessionStatus', 'Agenda ophalen...', 'success');
+  document.getElementById('sessionResults').innerHTML = '';
+
+  try {
+    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?` +
+      `q=${encodeURIComponent(keyword)}` +
+      `&timeMin=${encodeURIComponent(timeMin)}` +
+      `&timeMax=${encodeURIComponent(timeMax)}` +
+      `&singleEvents=true&orderBy=startTime&maxResults=100`;
+    const res  = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+
+    const events = data.items || [];
+    document.getElementById('sessionStatus').className = 'status';
+
+    const container = document.getElementById('sessionResults');
+    if (events.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);text-align:center;margin-top:16px">Geen sessies gevonden voor dit zoekwoord en deze periode.</p>';
+      return;
+    }
+
+    container.innerHTML = events.map(ev => {
+      const isAllDay  = !ev.start.dateTime;
+      const startDt   = new Date(ev.start.dateTime || ev.start.date);
+      const endDt     = new Date(ev.end.dateTime   || ev.end.date);
+      const dateStr   = startDt.toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      const timeStr   = isAllDay
+        ? 'Hele dag'
+        : `${startDt.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })} – ${endDt.toLocaleTimeString('nl-BE', { hour: '2-digit', minute: '2-digit' })}`;
+      return `
+        <div class="card" style="margin-bottom:12px">
+          <div style="font-weight:600;font-size:15px;margin-bottom:6px">${ev.summary || '(geen titel)'}</div>
+          <div style="font-size:13px;color:var(--text-muted)">${dateStr}</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:${ev.location || ev.description ? '8px' : '0'}">${timeStr}</div>
+          ${ev.location    ? `<div style="font-size:13px;color:var(--text-muted)">📍 ${ev.location}</div>` : ''}
+          ${ev.description ? `<div style="font-size:13px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);white-space:pre-line">${ev.description}</div>` : ''}
+        </div>`;
+    }).join('');
+  } catch (e) {
+    showStatus('sessionStatus', 'Fout: ' + e.message, 'error');
+  }
+}
+
+function initSessionPage() {
+  const kw    = localStorage.getItem('demetSessionKeyword');
+  const weeks = localStorage.getItem('demetSessionWeeks');
+  if (kw)    document.getElementById('sessionKeyword').value = kw;
+  if (weeks) document.getElementById('sessionWeeks').value   = weeks;
+  // Standaard startdatum = vandaag
+  if (!document.getElementById('sessionStartDate').value) {
+    document.getElementById('sessionStartDate').value = new Date().toISOString().slice(0, 10);
   }
 }
 </script>
