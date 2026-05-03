@@ -1952,6 +1952,28 @@ function shortEvtLabel(ev) {
   return `${day} ${date} ${s}-${e}`;
 }
 
+async function ensureCoachDataLoaded() {
+  if (!Object.keys(coachState).length) {
+    VESTIGINGEN.forEach(v => {
+      coachState[v] = { open:false, coachesOpen:false, leerlingenOpen:false, courseId:'', courseName:'', loading:false };
+      coachData[v]  = { coaches:[], leerlingen:[] };
+    });
+  }
+  const hasData = VESTIGINGEN.some(v => (coachData[v]?.leerlingen?.length || 0) > 0);
+  if (!hasData) await loadCoachDataFromFirestore();
+}
+
+function getCoachLabelForStudent(email) {
+  if (!email) return null;
+  const norm = email.toLowerCase().trim();
+  const allCoaches = VESTIGINGEN.flatMap(v => (coachData[v]?.coaches || []).filter(c => c.isCoach !== false));
+  for (const v of VESTIGINGEN) {
+    const leerling = (coachData[v]?.leerlingen || []).find(l => (l.email || '').toLowerCase().trim() === norm);
+    if (leerling?.coachId) return coachShortLabel(leerling.coachId, allCoaches);
+  }
+  return null;
+}
+
 async function toggleAttendancePanel(safeKey) {
   const panelId = `attpanel-${safeKey}`;
   const existing = document.getElementById(panelId);
@@ -1966,7 +1988,10 @@ async function toggleAttendancePanel(safeKey) {
   hdr.insertAdjacentElement('afterend', panel);
 
   const { indices } = sessionGroupMap[safeKey] || { indices: [] };
-  await loadManualAttendance(safeKey);
+  await Promise.all([
+    loadManualAttendance(safeKey),
+    ensureCoachDataLoaded()
+  ]);
 
   const taskIdx = indices.find(i => sessionStates[i]?.type === 'met-taak' && sessionStates[i]?.taskId);
   const taskId  = taskIdx !== undefined ? sessionStates[taskIdx].taskId : null;
@@ -2011,8 +2036,9 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
       </td>`;
     }
 
+    const coachLabel = getCoachLabelForStudent(s.email);
     return `<tr>
-      <td style="font-weight:500">${s.name}</td>
+      <td style="font-weight:500">${s.name}${coachLabel ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400">(${coachLabel})</span>` : ''}</td>
       <td style="font-size:12px;line-height:1.8">${calCol}</td>
       <td><button class="att-btn ${status}" onclick="cycleAttStatus('${safeKey}','${se}',this)">${ATT_LABELS[status]}</button></td>
       ${taskCell}
