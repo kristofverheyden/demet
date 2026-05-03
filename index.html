@@ -651,6 +651,7 @@ const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.coursework.students',
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
+  'https://www.googleapis.com/auth/classroom.profile.emails',
   'https://www.googleapis.com/auth/classroom.topics.readonly',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/drive.file',
@@ -1660,7 +1661,7 @@ function buildAttendanceRow(ev) {
   let all = (ev.attendees || []).filter(a => !a.self && !a.organizer);
   // Toon alleen individuele leerlingen uit het Classroom-roster (filtert groeps-e-mails weg)
   if (sessionRosterEmails && sessionRosterEmails.size > 0)
-    all = all.filter(a => sessionRosterEmails.has(a.email));
+    all = all.filter(a => sessionRosterEmails.has((a.email || '').toLowerCase().trim()));
   if (all.length === 0) return '';
   const ja         = all.filter(a => a.responseStatus === 'accepted');
   const nee        = all.filter(a => a.responseStatus === 'declined');
@@ -1909,7 +1910,9 @@ async function searchCalendarSessions() {
     if (rosterRes) {
       const rosterData = await rosterRes.json();
       sessionRosterEmails = new Set(
-        (rosterData.students || []).map(s => s.profile.emailAddress).filter(Boolean)
+        (rosterData.students || [])
+          .map(s => (s.profile.emailAddress || '').toLowerCase().trim())
+          .filter(Boolean)
       );
     }
     if (data.error) throw new Error(data.error.message);
