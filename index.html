@@ -2058,10 +2058,13 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
       </table>
     </div>
     ${taskId ? `
-    <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
-      <button class="primary" disabled style="opacity:.45;cursor:not-allowed;font-size:13px">✉️ Afwezigheden mailen</button>
-      <button class="primary" disabled style="opacity:.45;cursor:not-allowed;font-size:13px">✉️ Taak niet in orde mailen</button>
-      <button class="primary" disabled style="opacity:.45;cursor:not-allowed;font-size:13px">✉️ Afwezigheden en taak niet in orde mailen</button>
+    <div style="padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <select id="att-mail-type-${safeKey}" style="flex:1;min-width:200px;font-size:13px">
+        <option value="afwezigheden">Afwezigheden</option>
+        <option value="taak">Taak niet gemaakt</option>
+        <option value="beide" selected>Afwezigheden en/of taak niet gemaakt</option>
+      </select>
+      <button class="primary" disabled style="opacity:.45;cursor:not-allowed">✉️ Verstuur mail</button>
     </div>` : ''}`;
 }
 
