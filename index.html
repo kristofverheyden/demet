@@ -1802,12 +1802,14 @@ async function setSessionType(idx, type) {
   }
   if (type && type !== 'met-taak') sessionStates[idx].expanded = false;
   rerenderCard(idx);
+  saveSessionStateToFirestore(idx);
 }
 
-function setSessionTask(idx, taskId) {
+async function setSessionTask(idx, taskId) {
   sessionStates[idx].taskId = taskId;
   if (taskId) sessionStates[idx].expanded = false;
   rerenderCard(idx);
+  saveSessionStateToFirestore(idx);
 }
 
 function getSessionTaskName(taskId) {
@@ -1824,10 +1826,53 @@ async function loadSessionAssignments() {
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
     const data = await res.json();
-    sessionAssignments = (data.courseWork || []).map(w => ({ id: w.id, title: w.title }));
+    let work = data.courseWork || [];
+    // Alleen taken van het gekozen onderwerp tonen (net zoals bij feedback schrijven)
+    if (userPrefs.topicId) work = work.filter(w => w.topicId === userPrefs.topicId);
+    sessionAssignments = work.map(w => ({ id: w.id, title: w.title }));
   } catch (e) {
     sessionAssignments = [];
     console.warn('Taken laden mislukt:', e);
+  }
+}
+
+function sessionSafeId(eventId) {
+  return (eventId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+async function saveSessionStateToFirestore(idx) {
+  if (!fbAuth.currentUser || !userPrefs.courseId) return;
+  const ev    = calendarEvents[idx];
+  const state = sessionStates[idx];
+  if (!ev || !state.type) return;
+  const uid    = fbAuth.currentUser.uid;
+  const safeId = sessionSafeId(ev.id);
+  try {
+    await db.collection('sessions')
+      .doc(`${uid}_${userPrefs.courseId}`)
+      .set({ events: { [safeId]: { type: state.type, taskId: state.taskId || '' } } }, { merge: true });
+  } catch (e) {
+    console.warn('Sessie opslaan mislukt:', e);
+  }
+}
+
+async function loadSessionStatesFromFirestore() {
+  if (!fbAuth.currentUser || !userPrefs.courseId || !calendarEvents.length) return;
+  const uid = fbAuth.currentUser.uid;
+  try {
+    const snap = await db.collection('sessions').doc(`${uid}_${userPrefs.courseId}`).get();
+    if (!snap.exists) return;
+    const saved = snap.data().events || {};
+    calendarEvents.forEach((ev, idx) => {
+      const s = saved[sessionSafeId(ev.id)];
+      if (s && s.type) {
+        sessionStates[idx].type     = s.type;
+        sessionStates[idx].taskId   = s.taskId || '';
+        sessionStates[idx].expanded = false;
+      }
+    });
+  } catch (e) {
+    console.warn('Sessiedata laden mislukt:', e);
   }
 }
 
@@ -1871,6 +1916,7 @@ async function searchCalendarSessions() {
 
     calendarEvents = data.items || [];
     sessionStates  = calendarEvents.map(() => ({ type: '', taskId: '', expanded: true }));
+    await loadSessionStatesFromFirestore();
     document.getElementById('sessionStatus').className = 'status';
     renderAllSessions();
   } catch (e) {
@@ -1885,8 +1931,9 @@ function initSessionPage() {
   if (weeks) document.getElementById('sessionWeeks').value   = weeks;
   if (!document.getElementById('sessionStartDate').value)
     document.getElementById('sessionStartDate').value = new Date().toISOString().slice(0, 10);
-  // Reset roster zodat het opnieuw geladen wordt als het vak gewijzigd is
-  sessionRosterEmails = null;
+  // Reset cache zodat alles opnieuw geladen wordt als vak/onderwerp gewijzigd is
+  sessionRosterEmails  = null;
+  sessionAssignments   = null;
 }
 </script>
 </body>
