@@ -1188,18 +1188,41 @@ async function loadStudents() {
     });
     spokenTranscript = '';
 
+    await ensureCoachDataLoaded();
     const sel = document.getElementById('studentSelect');
     sel.innerHTML = '';
-    students.forEach((s, i) => {
+
+    const present = students.filter(s =>  getStudentOpSchool(s.profile.emailAddress || ''));
+    const absent  = students.filter(s => !getStudentOpSchool(s.profile.emailAddress || ''));
+
+    present.forEach(s => {
+      const i   = students.indexOf(s);
       const opt = document.createElement('option');
       opt.value = i;
       opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName;
       sel.appendChild(opt);
     });
 
+    if (absent.length) {
+      const sep = document.createElement('option');
+      sep.disabled = true;
+      sep.textContent = '── Voorlopig afwezig ──';
+      sel.appendChild(sep);
+      absent.forEach(s => {
+        const i   = students.indexOf(s);
+        const opt = document.createElement('option');
+        opt.value       = i;
+        opt.disabled    = true;
+        opt.style.color = '#bbb';
+        opt.textContent = s.profile.name.fullName;
+        sel.appendChild(opt);
+      });
+    }
+
     document.getElementById('selectStatus').className = 'status';
     section.style.display = 'block';
-    showStudent(0);
+    const firstIdx = present.length > 0 ? students.indexOf(present[0]) : 0;
+    showStudent(firstIdx);
   } catch (e) {
     showStatus('selectStatus', 'Fout: ' + e.message, 'error');
   }
@@ -2006,36 +2029,28 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
     return;
   }
 
-  const students   = [...sessionRoster].sort((a, b) => a.name.localeCompare(b.name, 'nl'));
-  const attendance = manualAttendance[safeKey] || {};
-  const subs       = taskId ? (sessionSubmissions[taskId] || null) : null;
+  const allStudents = [...sessionRoster].sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+  const attendance  = manualAttendance[safeKey] || {};
+  const subs        = taskId ? (sessionSubmissions[taskId] || null) : null;
+  const extraCols   = taskId ? 3 : 2;
 
-  const rows = students.map(s => {
+  function buildActiveRow(s) {
     const se = s.email.replace(/[^a-zA-Z0-9]/g, '_');
-
-    // Kol 2: sessies waarop leerling "ja" heeft gezegd
-    const accepted = indices
-      .map(i => calendarEvents[i])
+    const accepted = indices.map(i => calendarEvents[i])
       .filter(ev => (ev.attendees || []).some(a =>
-        (a.email || '').toLowerCase() === s.email && a.responseStatus === 'accepted'));
+        (a.email||'').toLowerCase() === s.email && a.responseStatus === 'accepted'));
     const calCol = accepted.length
       ? accepted.map(ev => `<span style="white-space:nowrap">${shortEvtLabel(ev)}</span>`).join('<br>')
       : '<span style="color:#bbb">—</span>';
-
-    // Kol 3: manuele status
     const status = attendance[se] || 'afwezig';
-
-    // Kol 4: taakstatus (Classroom info + manuele knop)
     let taskCell = '';
     if (taskId) {
       const checkStatus = (manualTaskChecks[safeKey] || {})[se] || 'nakijken';
-      const classroomInfo = getTaskStatusLabel(subs, s.userId);
       taskCell = `<td>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${classroomInfo}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${getTaskStatusLabel(subs, s.userId)}</div>
         <button class="att-btn ${checkStatus}" onclick="cycleTaskCheck('${safeKey}','${se}',this)">${TASK_CHECK_LABELS[checkStatus]}</button>
       </td>`;
     }
-
     const coachLabel = getCoachLabelForStudent(s.email);
     return `<tr>
       <td style="font-weight:500">${s.name}${coachLabel ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400">(${coachLabel})</span>` : ''}</td>
@@ -2043,7 +2058,19 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
       <td><button class="att-btn ${status}" onclick="cycleAttStatus('${safeKey}','${se}',this)">${ATT_LABELS[status]}</button></td>
       ${taskCell}
     </tr>`;
-  }).join('');
+  }
+
+  function buildAbsentRow(s) {
+    const coachLabel = getCoachLabelForStudent(s.email);
+    return `<tr style="color:#bbb">
+      <td style="font-weight:500;color:#bbb">${s.name}${coachLabel ? `<br><span style="font-size:11px;font-weight:400">(${coachLabel})</span>` : ''}<br><span style="font-size:10px;font-style:italic">voorlopig afwezig</span></td>
+      <td colspan="${extraCols}" style="color:#bbb;font-size:12px">—</td>
+    </tr>`;
+  }
+
+  const present = allStudents.filter(s =>  getStudentOpSchool(s.email));
+  const absent  = allStudents.filter(s => !getStudentOpSchool(s.email));
+  const rows    = present.map(buildActiveRow).join('') + absent.map(buildAbsentRow).join('');
 
   panel.innerHTML = `
     <div style="overflow-x:auto">
@@ -2524,10 +2551,11 @@ function renderLeerlingenTable(v) {
     .sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
   const sorted = [...dat.leerlingen].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'nl'));
   return `<table class="att-table">
-    <thead><tr><th>Naam leerling</th><th>Coach</th></tr></thead>
+    <thead><tr><th>Naam leerling</th><th>Coach</th><th>School</th></tr></thead>
     <tbody>
       ${sorted.map(l => {
         const cl = coachShortLabel(l.coachId, activeCoaches);
+        const opSchool = l.opSchool !== false;
         return `<tr>
           <td>
             <div style="font-weight:500">${l.name||'—'}${cl ? ` <span style="color:var(--text-muted);font-weight:400;font-size:13px">(${cl})</span>` : ''}</div>
@@ -2540,6 +2568,13 @@ function renderLeerlingenTable(v) {
               ${activeCoaches.map(c =>
                 `<option value="${c.id}"${c.id===(l.coachId||'')?'selected':''}>${c.name||c.email}</option>`
               ).join('')}
+            </select>
+          </td>
+          <td>
+            <select style="font-size:13px;width:100%"
+              onchange="saveLeerlingOpSchool('${v}','${l.id}',this.value)">
+              <option value="aanwezig" ${opSchool?'selected':''}>Aanwezig op school</option>
+              <option value="afwezig"  ${!opSchool?'selected':''}>Voorlopig afwezig</option>
             </select>
           </td>
         </tr>`;
@@ -2583,6 +2618,25 @@ async function saveLeerlingCoach(v, leerlingId, coachId) {
   try {
     await db.collection('leerlingen').doc(leerlingId).update({ coachId: coachId || null });
   } catch(e) { console.error('saveLeerlingCoach:', e); }
+}
+
+async function saveLeerlingOpSchool(v, leerlingId, value) {
+  const leerling = coachData[v]?.leerlingen.find(l => l.id === leerlingId);
+  const opSchool = value !== 'afwezig';
+  if (leerling) leerling.opSchool = opSchool;
+  try {
+    await db.collection('leerlingen').doc(leerlingId).update({ opSchool });
+  } catch(e) { console.error('saveLeerlingOpSchool:', e); }
+}
+
+function getStudentOpSchool(email) {
+  if (!email) return true;
+  const norm = email.toLowerCase().trim();
+  for (const v of VESTIGINGEN) {
+    const l = (coachData[v]?.leerlingen || []).find(l => (l.email||'').toLowerCase().trim() === norm);
+    if (l) return l.opSchool !== false;
+  }
+  return true;
 }
 
 async function loadCourseForVestiging(v) {
