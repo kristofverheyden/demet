@@ -1745,7 +1745,7 @@ function buildSessionCard(idx) {
         <div>
           <div style="font-weight:600;font-size:15px">${title}</div>
           <div style="font-size:13px;color:var(--text-muted)">${dateStr} · ${timeStr}</div>
-          ${state.sessionNr ? `<span class="session-badge" style="background:var(--surface2);color:var(--text-muted);margin-right:4px">Sessie ${state.sessionNr}</span>` : ''}${state.type ? `<span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>` : ''}${taskLine}
+          ${state.sessionNr ? `<span class="session-badge" style="background:var(--surface2);color:var(--text-muted);margin-right:4px">${isNaN(state.sessionNr) ? state.sessionNr : 'Sessie ' + state.sessionNr}</span>` : ''}${state.type ? `<span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>` : ''}${taskLine}
           ${buildAttendanceRow(ev)}
         </div>
         <button class="session-expand-btn" onclick="toggleSession(${idx})" title="Openklappen">▾</button>
@@ -1786,17 +1786,26 @@ function buildSessionCard(idx) {
         ${collapseBtn}
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Sessienummer</label>
-        <select style="width:100%;margin-bottom:10px" onchange="setSessionNr(${idx}, this.value)">
-          <option value="">— Kies sessienummer —</option>
-          ${Array.from({length:10},(_,i)=>`<option value="${i+1}" ${state.sessionNr==i+1?'selected':''}>Sessie ${i+1}</option>`).join('')}
-        </select>
         <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Type sessie</label>
-        <select style="width:100%" onchange="setSessionType(${idx}, this.value)">
+        <select style="width:100%;margin-bottom:${state.type ? '10px' : '0'}" onchange="setSessionType(${idx}, this.value)">
           <option value="">— Kies type —</option>
           <option value="fast-track"  ${state.type === 'fast-track'  ? 'selected' : ''}>⚡ Fast track</option>
           <option value="zonder-taak" ${state.type === 'zonder-taak' ? 'selected' : ''}>📋 Gewone sessie (zonder taak)</option>
           <option value="met-taak"    ${state.type === 'met-taak'    ? 'selected' : ''}>📝 Sessie met taak</option>
+        </select>
+        ${state.type === 'fast-track' ? `
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Sessienummer</label>
+        <select style="width:100%;margin-bottom:10px" onchange="setSessionNr(${idx}, this.value)">
+          <option value="">— Kies —</option>
+          ${['Fast track uitleg 1','Fast track uitleg 2','Fast track uitleg 3','Fast track uitdaging']
+            .map(v => `<option value="${v}" ${state.sessionNr===v?'selected':''}>${v}</option>`).join('')}
+        </select>` : ''}
+        ${(state.type === 'zonder-taak' || state.type === 'met-taak') ? `
+        <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Sessienummer</label>
+        <select style="width:100%;margin-bottom:10px" onchange="setSessionNr(${idx}, this.value)">
+          <option value="">— Kies sessienummer —</option>
+          ${Array.from({length:10},(_,i)=>`<option value="${i+1}" ${state.sessionNr==i+1?'selected':''}>Sessie ${i+1}</option>`).join('')}
+        </select>` : ''}
         </select>
         ${taskSel}
       </div>`;
@@ -1831,8 +1840,9 @@ function setSessionNr(idx, nr) {
 }
 
 async function setSessionType(idx, type) {
-  sessionStates[idx].type   = type;
-  sessionStates[idx].taskId = '';
+  sessionStates[idx].type      = type;
+  sessionStates[idx].taskId    = '';
+  sessionStates[idx].sessionNr = '';
   if (type === 'met-taak' && sessionAssignments === null) {
     rerenderCard(idx); // toon "laden…"
     await loadSessionAssignments();
