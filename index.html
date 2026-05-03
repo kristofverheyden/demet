@@ -1361,7 +1361,10 @@ Geen herhaling tussen Medals en Missions.`;
     }
     const data = await res.json();
     const plainText = data.content[0].text.trim();
-    noteEl.innerHTML = plainText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    noteEl.innerHTML = plainText
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
     aiBtn.textContent = '✨ Genereer';
     aiBtn.disabled = false;
   } catch (e) {
