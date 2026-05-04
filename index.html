@@ -1974,13 +1974,19 @@ function renderAllSessions() {
   });
 
   // Numeriek eerst (1,2…10), daarna alfabetisch (Fast track…)
+  // Fast track uitleg altijd vóór Fast track uitdaging
+  function ftSortKey(label) {
+    if (/fast track uitleg/i.test(label))    return 'fast track _1 ' + label;
+    if (/fast track uitdaging/i.test(label)) return 'fast track _2 ' + label;
+    return label;
+  }
   const sortedKeys = [...grouped.keys()].sort((a, b) => {
     const la = grouped.get(a).label, lb = grouped.get(b).label;
     const na = parseInt(la), nb = parseInt(lb);
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     if (!isNaN(na)) return -1;
     if (!isNaN(nb)) return 1;
-    return la.localeCompare(lb, 'nl');
+    return ftSortKey(la).localeCompare(ftSortKey(lb), 'nl');
   });
 
   // Groep met een event van vandaag bovenaan
