@@ -3000,6 +3000,21 @@ function initSessionPage() {
   // Laad opgeslagen sessies, daarna roster parallel
   Promise.all([loadSavedSessionsFromFirestore(), loadSessionRoster()]).then(() => {
     renderAllSessions();
+    // Haal attendees op voor alle sessiekaarten zodat ja/nee/afwachting zichtbaar is
+    if (accessToken) {
+      calendarEvents.forEach((ev, idx) => {
+        if (!ev?.id || ev.attendees) return;
+        fetch(
+          `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(ev.id)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        ).then(r => r.json()).then(data => {
+          if (!data.error) {
+            calendarEvents[idx].attendees = data.attendees || [];
+            rerenderCard(idx);
+          }
+        }).catch(() => {});
+      });
+    }
     // Agenda-zoekkaart openen als er nog geen sessies zijn
     if (calendarEvents.length === 0) {
       const body = document.getElementById('calSearchBody');
