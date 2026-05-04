@@ -459,6 +459,7 @@
 <header>
   <div class="logo">De<span>MET</span>expert</div>
   <button class="btn-logout" id="logoutBtn" style="display:none" onclick="logout()">Uitloggen</button>
+  <button id="debugTokenBtn" style="display:none;font-size:11px;padding:4px 8px;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff" onclick="checkToken()">🔍 Token</button>
 </header>
 
 <div class="main">
@@ -708,6 +709,7 @@ const CLIENT_ID = '407055340161-5t81q3ef51uto9rfk6eqsq9klsdd4285.apps.googleuser
 const ANTHROPIC_KEY = atob('c2stYW50LWFwaTAzLXE3X25tQV8xUnQ3MVNZMjZ4Q3VRdFNub3Y2dTZqTGVZX2tOc19IbDZLNHF1SFZRT3RYY0NyVG9wdV91NUUyMFFjNFNNTWhZYWJ6VHhYbU82VUNfajBRLWZOekhZd0FB');
 const CLASSROOM_SCOPES = [
   'https://www.googleapis.com/auth/classroom.coursework.students',
+  'https://www.googleapis.com/auth/classroom.grades',
   'https://www.googleapis.com/auth/classroom.courses.readonly',
   'https://www.googleapis.com/auth/classroom.rosters.readonly',
   'https://www.googleapis.com/auth/classroom.profile.emails',
@@ -749,6 +751,7 @@ function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(id).classList.add('active');
   document.getElementById('logoutBtn').style.display = id === 'page-login' ? 'none' : '';
+  document.getElementById('debugTokenBtn').style.display = id === 'page-login' ? 'none' : '';
   if (id === 'page-feedback') {
     updateContextBar();
     loadAssignments();
@@ -761,6 +764,14 @@ function showPage(id) {
   if (id === 'page-settings-prompt') loadPromptsFromFirestore().then(() => refreshPromptDropdown());
   if (id === 'page-coach') initCoachPage();
   if (id === 'page-setup') populateSetupCourses();
+}
+
+async function checkToken() {
+  if (!accessToken) return alert('Geen token beschikbaar.');
+  const r = await fetch(`https://www.googleapis.com/oauth2/v1/tokeninfo?access_token=${accessToken}`);
+  const d = await r.json();
+  const scopes = (d.scope || '').split(' ').map(s => s.split('/').pop());
+  alert(`Token scopes (${scopes.length}):\n\n${scopes.join('\n')}\n\nProject: ${d.issued_to || '?'}`);
 }
 
 async function logout() {
