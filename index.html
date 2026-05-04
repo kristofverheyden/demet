@@ -1831,7 +1831,10 @@ function buildSessionCard(idx) {
           ${state.sessionNr ? `<span class="session-badge" style="background:var(--surface2);color:var(--text-muted);margin-right:4px">${isNaN(state.sessionNr) ? state.sessionNr : 'Sessie ' + state.sessionNr}</span>` : ''}${state.type ? `<span class="session-badge">${SESSION_TYPE_LABELS[state.type]}</span>` : ''}${taskLine}
           ${buildAttendanceRow(ev)}
         </div>
-        <button class="session-expand-btn" onclick="toggleSession(${idx})" title="Openklappen">▾</button>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          <button class="session-expand-btn" onclick="toggleSession(${idx})" title="Openklappen">▾</button>
+          <button onclick="removeSession(${idx})" title="Verwijder uit overzicht" style="font-size:11px;padding:2px 8px;color:var(--danger);border-color:var(--danger);border-radius:6px;background:white;cursor:pointer;border:1px solid;white-space:nowrap">✕ Verwijder</button>
+        </div>
       </div>`;
   } else {
     // ── uitgeklapt ──
@@ -1867,7 +1870,10 @@ function buildSessionCard(idx) {
           ${ev.description ? `<div style="font-size:13px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);white-space:pre-line">${ev.description}</div>` : ''}
           ${buildAttendanceRow(ev)}
         </div>
-        ${collapseBtn}
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          ${collapseBtn}
+          <button onclick="removeSession(${idx})" title="Verwijder uit overzicht" style="font-size:11px;padding:2px 8px;color:var(--danger);border-color:var(--danger);border-radius:6px;background:white;cursor:pointer;border:1px solid;white-space:nowrap">✕ Verwijder</button>
+        </div>
       </div>
       <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
         <label style="font-size:13px;font-weight:500;display:block;margin-bottom:6px">Type sessie</label>
@@ -1900,6 +1906,27 @@ function buildSessionCard(idx) {
 function rerenderCard(idx) {
   const old = document.getElementById(`sess-${idx}`);
   if (old) old.replaceWith(buildSessionCard(idx));
+}
+
+async function removeSession(idx) {
+  const ev = calendarEvents[idx];
+  if (!ev) return;
+  if (!confirm(`"${ev.summary || '(geen titel)'}" verwijderen uit het overzicht?`)) return;
+
+  // Verwijder uit Firestore
+  if (fbAuth.currentUser && userPrefs.courseId) {
+    try {
+      const safeId = sessionSafeId(ev.id);
+      await db.collection('sessions').doc(sessionDocKey()).update({
+        [`events.${safeId}`]: firebase.firestore.FieldValue.delete()
+      });
+    } catch(e) { console.warn('Verwijderen mislukt:', e); }
+  }
+
+  // Verwijder uit geheugen en herrender
+  calendarEvents.splice(idx, 1);
+  sessionStates.splice(idx, 1);
+  renderAllSessions();
 }
 
 function renderAllSessions() {
