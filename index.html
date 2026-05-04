@@ -2031,10 +2031,48 @@ async function toggleAttendancePanel(safeKey) {
   const taskId  = taskIdx !== undefined ? sessionStates[taskIdx].taskId : null;
   if (taskId && !sessionSubmissions[taskId]) await loadTaskSubmissions(taskId);
 
-  renderAttendancePanel(panel, safeKey, indices, taskId);
+  // Bij gewone sessies: zoek Fast Track info op voor leerlingen zonder keuze
+  const currentType = indices.length > 0 ? sessionStates[indices[0]]?.type : '';
+  const isRegular   = currentType === 'zonder-taak' || currentType === 'met-taak';
+  const fastTrackMap = {};
+
+  if (isRegular) {
+    const ftGroups = Object.entries(sessionGroupMap)
+      .filter(([, g]) => g.indices.some(i => sessionStates[i]?.type === 'fast-track'));
+
+    if (ftGroups.length) {
+      await Promise.all(ftGroups.flatMap(([ftKey, ftGroup]) => [
+        loadManualAttendance(ftKey),
+        ...ftGroup.indices.map(idx => {
+          const ev = calendarEvents[idx];
+          if (!ev?.id || !accessToken || ev.attendees) return Promise.resolve();
+          return fetch(
+            `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(ev.id)}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          ).then(r => r.json()).then(d => { if (!d.error) ev.attendees = d.attendees || []; }).catch(() => {});
+        })
+      ]));
+
+      ftGroups.forEach(([ftKey, ftGroup]) => {
+        const att = manualAttendance[ftKey] || {};
+        (sessionRoster || []).forEach(s => {
+          const enrolled = ftGroup.indices.some(idx =>
+            (calendarEvents[idx]?.attendees || []).some(a =>
+              (a.email||'').toLowerCase() === s.email && a.responseStatus === 'accepted'));
+          if (!enrolled) return;
+          const se      = s.email.replace(/[^a-zA-Z0-9]/g, '_');
+          const aanwezig = att[se] || null;
+          if (!fastTrackMap[s.email]) fastTrackMap[s.email] = [];
+          fastTrackMap[s.email].push({ label: ftGroup.label, aanwezig });
+        });
+      });
+    }
+  }
+
+  renderAttendancePanel(panel, safeKey, indices, taskId, fastTrackMap);
 }
 
-function renderAttendancePanel(panel, safeKey, indices, taskId) {
+function renderAttendancePanel(panel, safeKey, indices, taskId, fastTrackMap = {}) {
   if (!sessionRoster || sessionRoster.length === 0) {
     panel.innerHTML = '<p style="padding:16px;color:var(--text-muted)">Voer eerst een zoekopdracht uit om leerlingen te laden.</p>';
     return;
@@ -2045,7 +2083,7 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
   const subs        = taskId ? (sessionSubmissions[taskId] || null) : null;
   const extraCols   = taskId ? 3 : 2;
 
-  function buildActiveRow(s) {
+  function buildActiveRow(s, showFT = false) {
     const se = s.email.replace(/[^a-zA-Z0-9]/g, '_');
     const accepted = indices.map(i => calendarEvents[i])
       .filter(ev => (ev.attendees || []).some(a =>
@@ -2063,8 +2101,14 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
       </td>`;
     }
     const coachLabel = getCoachLabelForStudent(s.email);
+    const ftEntries  = showFT ? (fastTrackMap[s.email] || []) : [];
+    const ftHtml     = ftEntries.map(ft => {
+      const col = ft.aanwezig === 'aanwezig' ? '#1b5e20' : ft.aanwezig === 'afwezig' ? '#b71c1c' : '#888';
+      const lbl = ft.aanwezig ? ATT_LABELS[ft.aanwezig] : '?';
+      return `<span style="font-size:10px;background:#e8f0fe;color:#1a56db;border-radius:8px;padding:1px 7px;margin-right:3px;white-space:nowrap">⚡ ${ft.label} · <span style="color:${col}">${lbl}</span></span>`;
+    }).join('');
     return `<tr>
-      <td style="font-weight:500">${s.name}${coachLabel ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400">(${coachLabel})</span>` : ''}</td>
+      <td style="font-weight:500">${s.name}${coachLabel ? `<br><span style="font-size:11px;color:var(--text-muted);font-weight:400">(${coachLabel})</span>` : ''}${ftHtml ? `<br><span style="display:inline-flex;gap:3px;flex-wrap:wrap;margin-top:2px">${ftHtml}</span>` : ''}</td>
       <td style="font-size:12px;line-height:1.8">${calCol}</td>
       <td><button class="att-btn ${status}" onclick="cycleAttStatus('${safeKey}','${se}',this)">${ATT_LABELS[status]}</button></td>
       ${taskCell}
@@ -2124,7 +2168,7 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
   });
   if (noMoment.length) {
     if (multiMoment || momentGroups.some(g => g.length)) rowParts.push(momentHeader('Zonder keuze'));
-    noMoment.forEach(s => rowParts.push(buildActiveRow(s)));
+    noMoment.forEach(s => rowParts.push(buildActiveRow(s, true)));
   }
   absent.forEach(s => rowParts.push(buildAbsentRow(s)));
 
