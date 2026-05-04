@@ -1742,31 +1742,47 @@ async function sendCurrentFeedback() {
 
 // ── Tijdens de sessie ──────────────────────────────────────────
 function buildAttendanceRow(ev) {
-  const nonSelf = (ev.attendees || []).filter(a => !a.self && !a.organizer);
+  // Filter organisatoren, uzelf en voorlopig afwezige leerlingen
+  const nonSelf = (ev.attendees || []).filter(a =>
+    !a.self && !a.organizer && getStudentOpSchool((a.email || '').toLowerCase().trim())
+  );
   if (nonSelf.length === 0) return '';
+
+  // Voornaam als label, met 3 letters achternaam bij gelijke voornamen in de groep
+  function shortLabel(a, group) {
+    const full = (a.displayName || '').trim();
+    if (!full || full.includes('@')) return a.email || '';
+    const parts     = full.split(/\s+/);
+    const firstName = parts[0];
+    const hasTwin   = group.some(b => b !== a &&
+      (b.displayName || '').trim().split(/\s+/)[0].toLowerCase() === firstName.toLowerCase());
+    if (!hasTwin) return firstName;
+    const suf = parts.slice(1).join(' ').slice(0, 3);
+    return suf ? `${firstName} ${suf}` : firstName;
+  }
 
   function chip(label, bg, color, names) {
     if (!names.length) return '';
     return `<span class="attend-chip" style="background:${bg};color:${color}">${label} ${names.length}<span class="att-tooltip">${names.join('<br>')}</span></span>`;
   }
 
-  // Als het roster geladen is: splits in individuele leerlingen vs groeps-e-mails
   if (sessionRosterEmails && sessionRosterEmails.size > 0) {
     const direct = nonSelf.filter(a => sessionRosterEmails.has((a.email || '').toLowerCase().trim()));
     const groups  = nonSelf.filter(a => !sessionRosterEmails.has((a.email || '').toLowerCase().trim()));
 
     if (direct.length === 0 && groups.length > 0) {
-      // Alleen groepen uitgenodigd → toon alle roster-leerlingen als "via groep"
-      const names = (sessionRoster || []).map(s => s.name).filter(Boolean);
+      // Alleen groepen uitgenodigd → toon aanwezige roster-leerlingen als "via groep"
+      const names = (sessionRoster || [])
+        .filter(s => getStudentOpSchool(s.email))
+        .map(s => s.name).filter(Boolean);
       if (!names.length) return '';
       const chips = `<span class="attend-chip" style="background:#e8f0fe;color:#1a56db">👥 Via groep ${names.length}<span class="att-tooltip">${names.join('<br>')}</span></span>`;
       return `<div class="attend-chips">${chips}</div>`;
     }
 
-    // Mix: individuele RSVP's aanwezig (groeps-e-mails worden genegeerd)
-    const ja         = direct.filter(a => a.responseStatus === 'accepted').map(a => a.displayName || a.email);
-    const nee        = direct.filter(a => a.responseStatus === 'declined').map(a => a.displayName || a.email);
-    const afwachting = direct.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative').map(a => a.displayName || a.email);
+    const ja         = direct.filter(a => a.responseStatus === 'accepted').map(a => shortLabel(a, direct));
+    const nee        = direct.filter(a => a.responseStatus === 'declined').map(a => shortLabel(a, direct));
+    const afwachting = direct.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative').map(a => shortLabel(a, direct));
     const chips = [
       chip('✓ Ja', '#e8f5e9', '#1b5e20', ja),
       chip('✗ Nee', '#fdecea', '#b71c1c', nee),
@@ -1775,10 +1791,10 @@ function buildAttendanceRow(ev) {
     return chips ? `<div class="attend-chips">${chips}</div>` : '';
   }
 
-  // Geen roster geladen: toon alle attendees zonder filter
-  const ja         = nonSelf.filter(a => a.responseStatus === 'accepted').map(a => a.displayName || a.email);
-  const nee        = nonSelf.filter(a => a.responseStatus === 'declined').map(a => a.displayName || a.email);
-  const afwachting = nonSelf.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative').map(a => a.displayName || a.email);
+  // Geen roster: toon alle gefilterde attendees
+  const ja         = nonSelf.filter(a => a.responseStatus === 'accepted').map(a => shortLabel(a, nonSelf));
+  const nee        = nonSelf.filter(a => a.responseStatus === 'declined').map(a => shortLabel(a, nonSelf));
+  const afwachting = nonSelf.filter(a => a.responseStatus === 'needsAction' || a.responseStatus === 'tentative').map(a => shortLabel(a, nonSelf));
   const chips = [
     chip('✓ Ja', '#e8f5e9', '#1b5e20', ja),
     chip('✗ Nee', '#fdecea', '#b71c1c', nee),
