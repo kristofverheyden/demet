@@ -1671,48 +1671,28 @@ async function sendCurrentFeedback() {
     const submissionId = d.submissionId;
     if (!submissionId) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
 
-    const patchRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}?updateMask=draftGrade`,
-      {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ draftGrade: 1 })
-      }
-    );
-    if (!patchRes.ok) {
-      const pd = await patchRes.json();
-      const msg = pd.error?.message || 'Onbekende fout';
-      const status = pd.error?.status || patchRes.status;
-      throw new Error(`Stap 2 (punt instellen) mislukt [${status}]: ${msg}`);
-    }
+    // Sla feedbacktekst op in Firestore
+    const userId = students[i].userId;
+    await db.collection('submissions').doc(`${courseId}_${assignmentId}_${userId}`).set({
+      feedback: d.note,
+      sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+      teacherUid: fbAuth.currentUser?.uid || ''
+    });
 
+    // Stuur inlevering terug in Classroom (optioneel – fout wordt niet geblokkeerd)
     const returnRes = await fetch(
       `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}:return`,
       { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
     );
-    if (!returnRes.ok) {
-      const rd = await returnRes.json();
-      const msg = rd.error?.message || 'Onbekende fout';
-      const status = rd.error?.status || returnRes.status;
-      throw new Error(`Stap 3 (terugsturen) mislukt [${status}]: ${msg}`);
-    }
-
-    // Sla feedbacktekst op in Firestore zodat die later terug gelezen kan worden
-    try {
-      const userId = students[i].userId;
-      await db.collection('submissions').doc(`${courseId}_${assignmentId}_${userId}`).set({
-        feedback: d.note,
-        sentAt: firebase.firestore.FieldValue.serverTimestamp(),
-        teacherUid: fbAuth.currentUser?.uid || ''
-      });
-    } catch (fsErr) {
-      console.warn('Feedback opslaan in Firestore mislukt:', fsErr);
-    }
+    const classroomWarning = returnRes.ok ? null : await returnRes.json().then(rd =>
+      `Inlevering terugsturen in Classroom mislukt: ${rd.error?.message || returnRes.status}`
+    ).catch(() => 'Inlevering terugsturen in Classroom mislukt.');
 
     const studentEmail = students[i].profile.emailAddress;
     const assignSel = document.getElementById('assignmentSelect');
     const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
     const warnings = [];
+    if (classroomWarning) warnings.push(classroomWarning);
 
     // Stuur e-mail naar leerling via Gmail
     if (studentEmail && d.note) {
