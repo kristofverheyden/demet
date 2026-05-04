@@ -1982,6 +1982,20 @@ function renderAllSessions() {
     return la.localeCompare(lb, 'nl');
   });
 
+  // Groep met een event van vandaag bovenaan
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayKey = sortedKeys.find(sk =>
+    grouped.get(sk).indices.some(i => {
+      const ev = calendarEvents[i];
+      const d = ev?.start?.dateTime || ev?.start?.date || '';
+      return d.slice(0, 10) === todayStr;
+    })
+  );
+  if (todayKey) {
+    sortedKeys.splice(sortedKeys.indexOf(todayKey), 1);
+    sortedKeys.unshift(todayKey);
+  }
+
   for (const sk of sortedKeys) {
     sessionGroupMap[sk] = grouped.get(sk);
     const hdr = document.createElement('div');
