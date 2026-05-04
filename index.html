@@ -1679,25 +1679,38 @@ async function sendCurrentFeedback() {
       teacherUid: fbAuth.currentUser?.uid || ''
     });
 
-    // Stuur inlevering terug in Classroom (optioneel – fout wordt niet geblokkeerd)
+    // Stel cijfer 1/1 in en geef inlevering terug in Classroom
+    const gradeRes = await fetch(
+      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}?updateMask=assignedGrade,draftGrade`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignedGrade: 1, draftGrade: 1 })
+      }
+    );
+    if (!gradeRes.ok) {
+      const gd = await gradeRes.json();
+      throw new Error(`Cijfer instellen mislukt [${gd.error?.status || gradeRes.status}]: ${gd.error?.message || 'Onbekende fout'}`);
+    }
+
     const returnRes = await fetch(
       `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}:return`,
       { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
     );
-    const classroomWarning = returnRes.ok ? null : await returnRes.json().then(rd =>
-      `Inlevering terugsturen in Classroom mislukt: ${rd.error?.message || returnRes.status}`
-    ).catch(() => 'Inlevering terugsturen in Classroom mislukt.');
+    if (!returnRes.ok) {
+      const rd = await returnRes.json();
+      throw new Error(`Teruggeven mislukt [${rd.error?.status || returnRes.status}]: ${rd.error?.message || 'Onbekende fout'}`);
+    }
 
-    const studentEmail = students[i].profile.emailAddress;
     const assignSel = document.getElementById('assignmentSelect');
     const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
     const warnings = [];
-    if (classroomWarning) warnings.push(classroomWarning);
 
-    // Stuur e-mail naar leerling via Gmail
-    if (studentEmail && d.note) {
+    // TEST: mail tijdelijk enkel naar kristof.verheyden@demetleuven.eu
+    const mailTo = 'kristof.verheyden@demetleuven.eu';
+    if (d.note) {
       try {
-        await sendEmailFeedback(studentEmail, `Feedback ${userPrefs.courseName} – ${assignName}`, d.note);
+        await sendEmailFeedback(mailTo, `Feedback ${userPrefs.courseName} – ${assignName} (TEST)`, d.note);
       } catch (mailErr) {
         console.warn('E-mail versturen mislukt:', mailErr);
         warnings.push(`e-mail: ${mailErr.message}`);
@@ -1705,6 +1718,7 @@ async function sendCurrentFeedback() {
     }
 
     // Maak Google Doc aan en voeg toe als bijlage aan de inlevering
+    const studentEmail = students[i].profile.emailAddress;
     if (d.note) {
       try {
         const fileId = await createFeedbackDoc(students[i].profile.name.fullName, assignName, d.note, studentEmail);
