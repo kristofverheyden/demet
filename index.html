@@ -2070,7 +2070,54 @@ function renderAttendancePanel(panel, safeKey, indices, taskId) {
 
   const present = allStudents.filter(s =>  getStudentOpSchool(s.email));
   const absent  = allStudents.filter(s => !getStudentOpSchool(s.email));
-  const rows    = present.map(buildActiveRow).join('') + absent.map(buildAbsentRow).join('');
+
+  // Sorteer events in deze groep chronologisch
+  const sortedEvIdx = [...indices].sort((a, b) =>
+    new Date(calendarEvents[a]?.start?.dateTime || calendarEvents[a]?.start?.date || 0) -
+    new Date(calendarEvents[b]?.start?.dateTime || calendarEvents[b]?.start?.date || 0)
+  );
+  const multiMoment = sortedEvIdx.length > 1;
+  const totalCols   = taskId ? 4 : 3;
+
+  // Bepaal voor elke aanwezige leerling bij welk moment hij/zij "ja" heeft gezegd
+  function acceptedMomentRank(s) {
+    for (let r = 0; r < sortedEvIdx.length; r++) {
+      const ev = calendarEvents[sortedEvIdx[r]];
+      if ((ev?.attendees || []).some(a =>
+        (a.email||'').toLowerCase() === s.email && a.responseStatus === 'accepted'))
+        return r;
+    }
+    return -1;
+  }
+
+  function momentHeader(label) {
+    return `<tr><td colspan="${totalCols}" style="background:var(--surface);font-size:11px;font-weight:600;color:var(--text-muted);padding:5px 12px;border-bottom:1px solid var(--border)">${label}</td></tr>`;
+  }
+
+  const momentGroups = sortedEvIdx.map(() => []);
+  const noMoment = [];
+  present.forEach(s => {
+    const r = acceptedMomentRank(s);
+    if (r >= 0) momentGroups[r].push(s);
+    else noMoment.push(s);
+  });
+
+  const rowParts = [];
+  momentGroups.forEach((group, r) => {
+    if (!group.length) return;
+    if (multiMoment) {
+      const ev = calendarEvents[sortedEvIdx[r]];
+      rowParts.push(momentHeader(`📅 Moment ${r + 1} — ${shortEvtLabel(ev)}`));
+    }
+    group.forEach(s => rowParts.push(buildActiveRow(s)));
+  });
+  if (noMoment.length) {
+    if (multiMoment || momentGroups.some(g => g.length)) rowParts.push(momentHeader('Zonder keuze'));
+    noMoment.forEach(s => rowParts.push(buildActiveRow(s)));
+  }
+  absent.forEach(s => rowParts.push(buildAbsentRow(s)));
+
+  const rows = rowParts.join('');
 
   panel.innerHTML = `
     <div style="overflow-x:auto">
