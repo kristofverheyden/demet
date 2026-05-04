@@ -350,9 +350,10 @@
   .att-btn.afwezig     { background:#f0f0f0; color:#555; }
   .att-btn.aanwezig    { background:#e8f5e9; color:#1b5e20; }
   .att-btn.niet-school { background:#fdecea; color:#b71c1c; }
-  .att-btn.nakijken    { background:#fff3e0; color:#e65100; }
-  .att-btn.gemaakt     { background:#e8f5e9; color:#1b5e20; }
-  .att-btn.niet-gemaakt{ background:#fdecea; color:#b71c1c; }
+  .att-btn.nakijken        { background:#fff3e0; color:#e65100; }
+  .att-btn.gemaakt         { background:#e8f5e9; color:#1b5e20; }
+  .att-btn.gedeeltelijk    { background:#e3f2fd; color:#0d47a1; }
+  .att-btn.niet-gemaakt    { background:#fdecea; color:#b71c1c; }
   .coach-vestiging { border:1px solid var(--border); border-radius:var(--radius); margin-bottom:12px; overflow:hidden; }
   .coach-vestiging-header {
     display:flex; justify-content:space-between; align-items:center;
@@ -729,7 +730,7 @@ let sessionRosterEmails = null;
 let sessionRoster       = null; // Array van {email, name, userId}
 let sessionGroupMap     = {};   // safeKey → { label, indices }
 let manualAttendance    = {};   // safeKey → { safeEmail → status }
-let manualTaskChecks    = {};   // safeKey → { safeEmail → 'nakijken'|'gemaakt'|'niet-gemaakt' }
+let manualTaskChecks    = {};   // safeKey → { safeEmail → 'nakijken'|'gemaakt'|'gedeeltelijk'|'niet-gemaakt' }
 let sessionSubmissions  = {};   // taskId → { userId → { state, draftGrade, assignedGrade } }
 
 // Herstel sessie via Firebase Auth
@@ -2023,8 +2024,8 @@ function renderAllSessions() {
 // ── Aanwezighedenpaneel ─────────────────────────────────────
 const ATT_CYCLE  = ['afwezig','aanwezig','niet-school'];
 const ATT_LABELS = { 'afwezig':'Afwezig', 'aanwezig':'Aanwezig', 'niet-school':'Niet op school' };
-const TASK_CHECK_CYCLE  = ['nakijken','gemaakt','niet-gemaakt'];
-const TASK_CHECK_LABELS = { 'nakijken':'Nakijken', 'gemaakt':'Gemaakt', 'niet-gemaakt':'Niet gemaakt' };
+const TASK_CHECK_CYCLE  = ['nakijken','gemaakt','gedeeltelijk','niet-gemaakt'];
+const TASK_CHECK_LABELS = { 'nakijken':'Nakijken', 'gemaakt':'Gemaakt', 'gedeeltelijk':'Gedeeltelijk gemaakt', 'niet-gemaakt':'Niet gemaakt' };
 
 function shortEvtLabel(ev) {
   const dt  = new Date(ev.start.dateTime || ev.start.date);
