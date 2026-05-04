@@ -1681,7 +1681,9 @@ async function sendCurrentFeedback() {
     );
     if (!patchRes.ok) {
       const pd = await patchRes.json();
-      throw new Error(pd.error?.message || 'Fout bij instellen punt.');
+      const msg = pd.error?.message || 'Onbekende fout';
+      const status = pd.error?.status || patchRes.status;
+      throw new Error(`Stap 2 (punt instellen) mislukt [${status}]: ${msg}`);
     }
 
     const returnRes = await fetch(
@@ -1690,7 +1692,9 @@ async function sendCurrentFeedback() {
     );
     if (!returnRes.ok) {
       const rd = await returnRes.json();
-      throw new Error(rd.error?.message || 'Fout bij terugsturen.');
+      const msg = rd.error?.message || 'Onbekende fout';
+      const status = rd.error?.status || returnRes.status;
+      throw new Error(`Stap 3 (terugsturen) mislukt [${status}]: ${msg}`);
     }
 
     // Sla feedbacktekst op in Firestore zodat die later terug gelezen kan worden
