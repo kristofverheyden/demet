@@ -2259,9 +2259,16 @@ async function saveSessionStateToFirestore(idx) {
           taskLink:    state.taskLink || '',
           summary:     ev.summary || '',
           description: ev.description || '',
+          location:    ev.location || '',
           start:       ev.start,
           end:         ev.end || {},
-          eventId:     ev.id || ''
+          eventId:     ev.id || '',
+          attendees:   (ev.attendees || []).map(a => ({
+            email:          a.email          || '',
+            responseStatus: a.responseStatus || '',
+            organizer:      a.organizer      || false,
+            self:           a.self           || false
+          }))
         }
       }
     }, { merge: true });
@@ -2286,6 +2293,8 @@ async function loadSessionStatesFromFirestore() {
         sessionStates[idx].taskLink  = s.taskLink || '';
         sessionStates[idx].expanded  = false;
         if (s.description && !calendarEvents[idx].description) calendarEvents[idx].description = s.description;
+        if (s.location   && !calendarEvents[idx].location)    calendarEvents[idx].location    = s.location;
+        if (s.attendees?.length && !calendarEvents[idx].attendees?.length) calendarEvents[idx].attendees = s.attendees;
       }
     });
   } catch (e) {
@@ -2304,7 +2313,7 @@ async function loadSavedSessionsFromFirestore() {
     for (const s of Object.values(saved)) {
       if (!s.eventId || !s.start) continue;
       pairs.push({
-        ev: { id: s.eventId, summary: s.summary || '(zonder titel)', description: s.description || '', start: s.start, end: s.end || {} },
+        ev: { id: s.eventId, summary: s.summary || '(zonder titel)', description: s.description || '', location: s.location || '', start: s.start, end: s.end || {}, attendees: s.attendees || [] },
         st: { sessionNr: s.sessionNr || '', type: s.type || '', taskId: s.taskId || '', taskLink: s.taskLink || '', expanded: false }
       });
     }
