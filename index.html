@@ -1671,6 +1671,10 @@ async function sendCurrentFeedback() {
     const submissionId = d.submissionId;
     if (!submissionId) throw new Error(`Geen inlevering gevonden voor ${students[i].profile.name.fullName}.`);
 
+    const assignSel = document.getElementById('assignmentSelect');
+    const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
+    const warnings = [];
+
     // Sla feedbacktekst op in Firestore
     const userId = students[i].userId;
     await db.collection('submissions').doc(`${courseId}_${assignmentId}_${userId}`).set({
@@ -1688,23 +1692,19 @@ async function sendCurrentFeedback() {
         body: JSON.stringify({ assignedGrade: 1, draftGrade: 1 })
       }
     );
-    if (!gradeRes.ok) {
+    if (gradeRes.ok) {
+      const returnRes = await fetch(
+        `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}:return`,
+        { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
+      );
+      if (!returnRes.ok) {
+        const rd = await returnRes.json();
+        warnings.push(`Teruggeven in Classroom mislukt: ${rd.error?.message || returnRes.status}`);
+      }
+    } else {
       const gd = await gradeRes.json();
-      throw new Error(`Cijfer instellen mislukt [${gd.error?.status || gradeRes.status}]: ${gd.error?.message || 'Onbekende fout'}`);
+      warnings.push(`Classroom nog niet beschikbaar (schrijftoegang nodig van beheerder): ${gd.error?.message || gradeRes.status}`);
     }
-
-    const returnRes = await fetch(
-      `https://classroom.googleapis.com/v1/courses/${courseId}/courseWork/${assignmentId}/studentSubmissions/${submissionId}:return`,
-      { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: '{}' }
-    );
-    if (!returnRes.ok) {
-      const rd = await returnRes.json();
-      throw new Error(`Teruggeven mislukt [${rd.error?.status || returnRes.status}]: ${rd.error?.message || 'Onbekende fout'}`);
-    }
-
-    const assignSel = document.getElementById('assignmentSelect');
-    const assignName = assignSel.options[assignSel.selectedIndex]?.text || 'Taak';
-    const warnings = [];
 
     // TEST: mail tijdelijk enkel naar kristof.verheyden@demetleuven.eu
     const mailTo = 'kristof.verheyden@demetleuven.eu';
