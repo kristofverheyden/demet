@@ -609,7 +609,7 @@
         <div id="studentPanel"></div>
 
         <div class="btn-row">
-          <button class="primary" id="sendBtn" onclick="sendCurrentFeedback()">Versturen</button>
+          <button class="primary" id="sendBtn" onclick="sendCurrentFeedback()">Ingeven + kopiëren voor Classroom</button>
         </div>
         <div class="status" id="sendStatus"></div>
       </div>
@@ -1413,16 +1413,13 @@ async function showStudent(index) {
       <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 2px;align-self:center"></span>
       ` : ''}
       <button type="button" class="fmt-btn" id="copyFeedbackBtn" onclick="copyFeedback()" title="Kopiëren">⎘</button>
-      ${d.submissionLink ? `
-      <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 2px;align-self:center"></span>
-      <a href="${d.submissionLink}" target="_blank" class="fmt-btn" title="Kopieer feedback en open inlevering in Classroom" style="text-decoration:none" onclick="copyFeedback()">👤 Inlevering</a>` : ''}
     </div>
     <div id="current-note" class="feedback-editor" contenteditable="${d.sent ? 'false' : 'true'}" data-placeholder="Feedback voor ${firstName}...">${d.note}</div>
   `;
 
   const btn = document.getElementById('sendBtn');
   btn.disabled = d.sent;
-  btn.textContent = d.sent ? 'Verstuurd' : 'Versturen';
+  btn.textContent = d.sent ? 'Verstuurd' : 'Ingeven + kopiëren voor Classroom';
   document.getElementById('sendStatus').className = 'status';
   setTimeout(() => { initTextareas(); initPromptSelect(); }, 0);
 
@@ -1668,7 +1665,7 @@ async function sendCurrentFeedback() {
   const courseId = userPrefs.courseId;
   const assignmentId = document.getElementById('assignmentSelect').value;
   const btn = document.getElementById('sendBtn');
-  btn.innerHTML = '<span class="spinner"></span>Versturen...';
+  btn.innerHTML = '<span class="spinner"></span>Bezig...';
   btn.disabled = true;
 
   try {
@@ -1752,8 +1749,12 @@ async function sendCurrentFeedback() {
       : `Feedback verstuurd voor ${students[i].profile.name.fullName}.`;
     showStatus('sendStatus', statusMsg, 'success');
     showStudent(i);
+    // Kopieer feedback en open inlevering in Classroom
+    copyFeedback();
+    const subLink = studentData[i].submissionLink;
+    if (subLink) window.open(subLink, '_blank');
   } catch (e) {
-    btn.innerHTML = 'Versturen';
+    btn.innerHTML = 'Ingeven + kopiëren voor Classroom';
     btn.disabled = false;
     showStatus('sendStatus', 'Fout: ' + e.message, 'error');
   }
