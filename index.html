@@ -1413,19 +1413,9 @@ async function showStudent(index) {
       <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 2px;align-self:center"></span>
       ` : ''}
       <button type="button" class="fmt-btn" id="copyFeedbackBtn" onclick="copyFeedback()" title="Kopiëren">⎘</button>
+      ${d.submissionLink ? `
       <span style="display:inline-block;width:1px;height:18px;background:var(--border);margin:0 2px;align-self:center"></span>
-      ${(() => {
-        const courseId = userPrefs.courseId;
-        const assignmentId = document.getElementById('assignmentSelect')?.value;
-        const taskLink = assignmentId
-          ? `https://classroom.google.com/c/${courseId}/a/${assignmentId}/details`
-          : null;
-        const subLink = d.submissionLink || null;
-        return [
-          taskLink ? `<a href="${taskLink}" target="_blank" class="fmt-btn" title="Open taak in Classroom" style="text-decoration:none">📋 Taak</a>` : '',
-          subLink  ? `<a href="${subLink}"  target="_blank" class="fmt-btn" title="Open inlevering leerling in Classroom" style="text-decoration:none">👤 Inlevering</a>` : ''
-        ].join('');
-      })()}
+      <a href="${d.submissionLink}" target="_blank" class="fmt-btn" title="Kopieer feedback en open inlevering in Classroom" style="text-decoration:none" onclick="copyFeedback()">👤 Inlevering</a>` : ''}
     </div>
     <div id="current-note" class="feedback-editor" contenteditable="${d.sent ? 'false' : 'true'}" data-placeholder="Feedback voor ${firstName}...">${d.note}</div>
   `;
