@@ -2056,11 +2056,11 @@ async function sendCurrentFeedback() {
       ? `Feedback verstuurd ✓ (waarschuwingen: ${warnings.join('; ')})`
       : `Feedback verstuurd voor ${students[i].profile.name.fullName}.`;
     showStatus('sendStatus', statusMsg, 'success');
-    // Toon promote-sectie voor bibliotheek vóór showStudent (die reset de panel)
+    // Capture checks vóór showStudent die currentStudentChecks reset
     const checkedM = [...currentStudentChecks.medals];
     const checkedX = [...currentStudentChecks.missions];
     showStudent(i);
-    if (checkedM.length || checkedX.length) renderPromoteSection(checkedM, checkedX);
+    renderPromoteSection(checkedM, checkedX);
     // Kopieer feedback en open inlevering in Classroom
     copyFeedback();
     const subLink = studentData[i].submissionLink;
