@@ -258,6 +258,7 @@
 
   button:hover { background: var(--surface2); }
   button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  button.btn-secondary { background: var(--surface); border: 1px solid var(--border); color: var(--text); }
   button.primary:hover { background: var(--accent-text); border-color: var(--accent-text); }
   button:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -610,6 +611,7 @@
 
         <div class="btn-row">
           <button class="primary" id="sendBtn" onclick="sendCurrentFeedback()">Ingeven + kopiëren voor Classroom</button>
+          <button class="btn-secondary" id="editFeedbackBtn" onclick="unlockFeedback()" style="display:none">✏️ Aanpassen feedback</button>
         </div>
         <div class="status" id="sendStatus"></div>
       </div>
@@ -1380,6 +1382,16 @@ function formatFeedback(command) {
   document.execCommand(command, false, null);
 }
 
+function unlockFeedback() {
+  const i = currentStudentIndex;
+  if (i === null || !studentData[i]) return;
+  studentData[i].sent = false;
+  const noteEl = document.getElementById('current-note');
+  if (noteEl) noteEl.contentEditable = 'true';
+  // Toon opmaakknoppen en verberg aanpassen-knop
+  showStudent(i);
+}
+
 function saveCurrentStudent() {
   const i = currentStudentIndex;
   if (i === null || isNaN(i) || !studentData[i]) return;
@@ -1434,6 +1446,11 @@ async function showStudent(index) {
   const btn = document.getElementById('sendBtn');
   btn.disabled = d.sent;
   btn.textContent = d.sent ? 'Verstuurd' : 'Ingeven + kopiëren voor Classroom';
+
+  const editBtn = document.getElementById('editFeedbackBtn');
+  if (editBtn) {
+    editBtn.style.display = d.sent ? '' : 'none';
+  }
   document.getElementById('sendStatus').className = 'status';
   setTimeout(() => { initTextareas(); initPromptSelect(); }, 0);
 
