@@ -1598,7 +1598,7 @@ function toggleSpeech() {
       }
       spokenInput.value = ((base ? base + ' ' : '') + sessionFinal + interim).trim();
       autoResize(spokenInput);
-      if (!isIOS && !isAndroid) silenceTimer = setTimeout(() => recognition && recognition.stop(), 3000);
+      if (!isIOS && !isAndroid) silenceTimer = setTimeout(() => recognition && recognition.stop(), 10000);
     };
 
     recognition.onend = () => {
