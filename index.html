@@ -624,6 +624,7 @@
           <button class="btn-secondary" id="editFeedbackBtn" onclick="unlockFeedback()" style="display:none">✏️ Aanpassen feedback</button>
         </div>
         <div class="status" id="sendStatus"></div>
+        <div id="promoteSection"></div>
       </div>
     </div>
   </div>
@@ -1407,25 +1408,26 @@ function formatFeedback(command) {
 }
 
 // ── Medals & Missions ────────────────────────────────────────────────────────
+// Items: { label: string, detail: string }
+// Checks: set van labels (string)
 
 function mmDocKey() {
   const uid = fbAuth.currentUser?.uid || 'anon';
   return `${uid}_${userPrefs.courseId}_${userPrefs.topicId || 'none'}`;
 }
+function mmStudentDocKey(userId) { return `${mmDocKey()}_${userId}`; }
 
-function mmStudentDocKey(userId) {
-  return `${mmDocKey()}_${userId}`;
-}
+function mmItemLabel(item) { return typeof item === 'string' ? item : (item.label || ''); }
+function mmItemDetail(item) { return typeof item === 'string' ? '' : (item.detail || ''); }
+function mmNormalize(arr) { return (arr||[]).map(i => typeof i === 'string' ? {label:i, detail:''} : i); }
 
 async function loadFeedbackCategories() {
   try {
     const snap = await db.collection('feedbackCategories').doc(mmDocKey()).get();
     if (snap.exists) {
       const d = snap.data();
-      feedbackCategories = { medals: d.medals || [], missions: d.missions || [] };
-    } else {
-      feedbackCategories = { medals: [], missions: [] };
-    }
+      feedbackCategories = { medals: mmNormalize(d.medals), missions: mmNormalize(d.missions) };
+    } else { feedbackCategories = { medals: [], missions: [] }; }
   } catch(e) { feedbackCategories = { medals: [], missions: [] }; }
 }
 
@@ -1464,27 +1466,33 @@ async function saveStudentChecks(userId) {
 function renderMedalsMissions() {
   const container = document.getElementById('mmSection');
   if (!container) return;
-  const userId = students[currentStudentIndex]?.userId;
+
+  function chipHtml(item, idx, type) {
+    const label = mmItemLabel(item);
+    const detail = mmItemDetail(item);
+    const isChecked = currentStudentChecks[type].has(label);
+    const cls = isChecked ? `checked ${type === 'medals' ? 'medal' : 'mission'}` : '';
+    const detailBtn = detail
+      ? `<span class="mm-del" title="${detail.replace(/"/g,"'")}" onclick="event.stopPropagation();alert('${detail.replace(/'/g,"\\'").replace(/\n/g,'\\n')}')">?</span>`
+      : '';
+    return `<span class="mm-chip ${cls}" onclick="toggleMM('${type}',${idx})">
+      ${isChecked ? '✓ ' : ''}${label}${detailBtn}
+      <span class="mm-del" onclick="event.stopPropagation();removeMM('${type}',${idx})">✕</span>
+    </span>`;
+  }
 
   function buildChips(type) {
     const items = feedbackCategories[type];
-    const checked = currentStudentChecks[type];
     if (!items.length) return '<span style="font-size:12px;color:#bbb">Nog geen items — voeg toe met +</span>';
-    return items.map((item, idx) => {
-      const isChecked = checked.has(item);
-      return `<span class="mm-chip ${isChecked ? 'checked ' + (type === 'medals' ? 'medal' : 'mission') : ''}"
-        onclick="toggleMM('${type}',${idx})">
-        ${isChecked ? '✓ ' : ''}${item}
-        <span class="mm-del" onclick="event.stopPropagation();removeMM('${type}',${idx})">✕</span>
-      </span>`;
-    }).join('');
+    return items.map((item, idx) => chipHtml(item, idx, type)).join('');
   }
 
+  const total = currentStudentChecks.medals.size + currentStudentChecks.missions.size;
   container.innerHTML = `
     <div class="mm-section">
       <div class="mm-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'flex':'none'">
         <span>🏅 Medals &amp; 🎯 Missions</span>
-        <span style="font-weight:400;color:var(--text-muted)">${currentStudentChecks.medals.size + currentStudentChecks.missions.size} aangevinkt ▾</span>
+        <span style="font-weight:400;color:var(--text-muted)">${total} aangevinkt ▾</span>
       </div>
       <div class="mm-body" style="flex-direction:column">
         <div style="font-size:11px;font-weight:600;color:#2e7d32;margin-bottom:2px">🏅 Medals</div>
@@ -1504,10 +1512,11 @@ function renderMedalsMissions() {
 function toggleMM(type, idx) {
   const item = feedbackCategories[type][idx];
   if (!item) return;
-  if (currentStudentChecks[type].has(item)) {
-    currentStudentChecks[type].delete(item);
+  const label = mmItemLabel(item);
+  if (currentStudentChecks[type].has(label)) {
+    currentStudentChecks[type].delete(label);
   } else {
-    currentStudentChecks[type].add(item);
+    currentStudentChecks[type].add(label);
   }
   const userId = students[currentStudentIndex]?.userId;
   saveStudentChecks(userId);
@@ -1515,22 +1524,89 @@ function toggleMM(type, idx) {
 }
 
 async function addMM(type) {
-  const text = prompt(type === 'medals' ? 'Nieuwe medal:' : 'Nieuwe mission:');
-  if (!text || !text.trim()) return;
-  feedbackCategories[type].push(text.trim());
+  const label = prompt(type === 'medals' ? 'Korte beschrijving medal:' : 'Korte beschrijving mission:');
+  if (!label?.trim()) return;
+  const detail = prompt('Volledige beschrijving (optioneel, zichtbaar via ?):') || '';
+  feedbackCategories[type].push({ label: label.trim(), detail: detail.trim() });
   await saveFeedbackCategories();
   renderMedalsMissions();
 }
 
 async function removeMM(type, idx) {
   const item = feedbackCategories[type][idx];
-  if (!confirm(`"${item}" verwijderen uit de lijst?`)) return;
+  const label = mmItemLabel(item);
+  if (!confirm(`"${label}" verwijderen uit de lijst?`)) return;
   feedbackCategories[type].splice(idx, 1);
-  currentStudentChecks[type].delete(item);
+  currentStudentChecks[type].delete(label);
   await saveFeedbackCategories();
   const userId = students[currentStudentIndex]?.userId;
   saveStudentChecks(userId);
   renderMedalsMissions();
+}
+
+function renderPromoteSection(checkedMedals, checkedMissions) {
+  const el = document.getElementById('promoteSection');
+  if (!el) return;
+
+  function promoteRows(type, labels) {
+    if (!labels.length) return '<p style="font-size:12px;color:#bbb;margin:4px 0">—</p>';
+    return labels.map(label => {
+      const existing = feedbackCategories[type].find(i => mmItemLabel(i) === label);
+      const shortVal = existing ? mmItemLabel(existing) : label;
+      const detailVal = existing ? mmItemDetail(existing) : '';
+      const id = `prm_${type}_${label.replace(/\W/g,'_')}`;
+      return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
+        <input type="checkbox" id="cb_${id}" ${existing ? 'checked' : ''} style="margin-top:3px;flex-shrink:0">
+        <div style="flex:1">
+          <input type="text" value="${shortVal.replace(/"/g,'&quot;')}" id="lbl_${id}"
+            placeholder="Korte beschrijving (chip-label)"
+            style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
+          <input type="text" value="${detailVal.replace(/"/g,'&quot;')}" id="det_${id}"
+            placeholder="Volledige beschrijving (zichtbaar via ?)"
+            style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:#666">
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const allChecked = { medals: checkedMedals, missions: checkedMissions };
+  el.innerHTML = `
+    <div style="margin-top:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+      <div style="background:var(--surface2);padding:8px 12px;font-size:13px;font-weight:600">
+        📚 Toevoegen aan bibliotheek?
+      </div>
+      <div style="padding:10px 12px">
+        <div style="font-size:11px;font-weight:600;color:#2e7d32;margin-bottom:4px">🏅 Medals</div>
+        ${promoteRows('medals', checkedMedals)}
+        <div style="font-size:11px;font-weight:600;color:#e65100;margin:8px 0 4px">🎯 Missions</div>
+        ${promoteRows('missions', checkedMissions)}
+        <button class="primary" style="margin-top:8px;font-size:12px;padding:5px 14px"
+          onclick="savePromotedItems(${JSON.stringify(allChecked).replace(/"/g,'&quot;')})">
+          Opslaan in bibliotheek
+        </button>
+      </div>
+    </div>`;
+}
+
+async function savePromotedItems(allChecked) {
+  ['medals','missions'].forEach(type => {
+    (allChecked[type] || []).forEach(label => {
+      const id = `prm_${type}_${label.replace(/\W/g,'_')}`;
+      const cb  = document.getElementById(`cb_${id}`);
+      if (!cb?.checked) return;
+      const newLabel  = document.getElementById(`lbl_${id}`)?.value.trim() || label;
+      const newDetail = document.getElementById(`det_${id}`)?.value.trim() || '';
+      const idx = feedbackCategories[type].findIndex(i => mmItemLabel(i) === label);
+      if (idx >= 0) {
+        feedbackCategories[type][idx] = { label: newLabel, detail: newDetail };
+      } else {
+        feedbackCategories[type].push({ label: newLabel, detail: newDetail });
+      }
+    });
+  });
+  await saveFeedbackCategories();
+  document.getElementById('promoteSection').innerHTML =
+    '<p style="font-size:12px;color:#2e7d32;padding:8px 0">✓ Opgeslagen in bibliotheek.</p>';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1862,8 +1938,14 @@ Geen herhaling tussen Medals en Missions.`;
         max_tokens: 600,
         system: selectedPrompt || defaultSystemPrompt,
         messages: [{ role: 'user', content: (() => {
-          const checkedMedals   = [...currentStudentChecks.medals];
-          const checkedMissions = [...currentStudentChecks.missions];
+          const checkedMedals   = [...currentStudentChecks.medals].map(lbl => {
+            const it = feedbackCategories.medals.find(i => mmItemLabel(i) === lbl);
+            return it && mmItemDetail(it) ? `${lbl} (${mmItemDetail(it)})` : lbl;
+          });
+          const checkedMissions = [...currentStudentChecks.missions].map(lbl => {
+            const it = feedbackCategories.missions.find(i => mmItemLabel(i) === lbl);
+            return it && mmItemDetail(it) ? `${lbl} (${mmItemDetail(it)})` : lbl;
+          });
           let extra = '';
           if (checkedMedals.length)   extra += `\n\nVerzeker dat deze medals zeker aan bod komen: ${checkedMedals.join(', ')}.`;
           if (checkedMissions.length) extra += `\n\nVerzeker dat deze missions zeker aan bod komen: ${checkedMissions.join(', ')}.`;
@@ -1974,7 +2056,11 @@ async function sendCurrentFeedback() {
       ? `Feedback verstuurd ✓ (waarschuwingen: ${warnings.join('; ')})`
       : `Feedback verstuurd voor ${students[i].profile.name.fullName}.`;
     showStatus('sendStatus', statusMsg, 'success');
+    // Toon promote-sectie voor bibliotheek vóór showStudent (die reset de panel)
+    const checkedM = [...currentStudentChecks.medals];
+    const checkedX = [...currentStudentChecks.missions];
     showStudent(i);
+    if (checkedM.length || checkedX.length) renderPromoteSection(checkedM, checkedX);
     // Kopieer feedback en open inlevering in Classroom
     copyFeedback();
     const subLink = studentData[i].submissionLink;
