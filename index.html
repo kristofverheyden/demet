@@ -738,6 +738,7 @@ async function fetchAllPages(baseUrl, itemsKey) {
 }
 let students = [];
 let studentData = [];
+let currentStudentIndex = null;
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
@@ -1380,9 +1381,8 @@ function formatFeedback(command) {
 }
 
 function saveCurrentStudent() {
-  const sel = document.getElementById('studentSelect');
-  const i = parseInt(sel.value);
-  if (isNaN(i)) return;
+  const i = currentStudentIndex;
+  if (i === null || isNaN(i) || !studentData[i]) return;
   const noteEl = document.getElementById('current-note');
   const spokenEl = document.getElementById('spokenInput');
   if (noteEl) {
@@ -1395,6 +1395,7 @@ function saveCurrentStudent() {
 async function showStudent(index) {
   saveCurrentStudent();
   index = parseInt(index);
+  currentStudentIndex = index;
   document.getElementById('studentSelect').value = index;
 
   const s = students[index];
