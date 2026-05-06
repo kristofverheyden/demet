@@ -1683,6 +1683,7 @@ Duidelijk zeggen:
 - wat de leerling concreet moet doen (bv. remediëring maken, herkansing TJ, verbeteren…)
 
 Belangrijke regels:
+Begin DIRECT met de feedback (bv. "In orde" of "Remediëring nodig"). Voeg nooit een inleidende zin toe zoals "Hier is de feedback van..." of "Dit is de feedback voor...".
 Spreek de leerling altijd direct aan in de tweede persoon (je/jij). Schrijf nooit in de derde persoon. Gebruik de voornaam van de leerling enkel af en toe als aanspreekvorm (bv. "Goed gedaan, Emmanuelle!" of "Je hebt de TJ goed gemaakt, Emmanuelle."), niet als onderwerp van een zin.
 Gebruik altijd "TJ" (niet "testje", niet "tussen").
 Schrijf in duidelijke, eenvoudige leerkrachtentaal.
@@ -1704,7 +1705,7 @@ Geen herhaling tussen Medals en Missions.`;
         model: 'claude-sonnet-4-6',
         max_tokens: 600,
         system: selectedPrompt || defaultSystemPrompt,
-        messages: [{ role: 'user', content: `Schrijf feedback voor ${studentName} op basis van deze notities van de leerkracht: "${text}"` }]
+        messages: [{ role: 'user', content: `Schrijf feedback voor leerling ${studentName} op basis van deze notities: "${text}"` }]
       })
     });
     if (!res.ok) {
