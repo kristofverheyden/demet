@@ -781,6 +781,12 @@ function showPage(id) {
   if (id === 'page-session') { updateContextBar(); initSessionPage(); }
   if (id === 'page-settings') loadSettingsUI();
   if (id === 'page-settings-prompt') loadPromptsFromFirestore().then(() => refreshPromptDropdown());
+  if (id === 'page-feedback') {
+    if (!cachedPrompts.length) loadPromptsFromFirestore().then(() => {
+      const sel = document.getElementById('promptSelect');
+      if (sel) initPromptSelect();
+    });
+  }
   if (id === 'page-coach') initCoachPage();
   if (id === 'page-setup') populateSetupCourses();
 }
@@ -1478,17 +1484,43 @@ async function showStudent(index) {
 function initPromptSelect() {
   const sel = document.getElementById('promptSelect');
   if (!sel) return;
+  if (!cachedPrompts.length) {
+    loadPromptsFromFirestore().then(() => fillPromptSelect(sel));
+  } else {
+    fillPromptSelect(sel);
+  }
+}
+
+function fillPromptSelect(sel) {
+  const uid  = fbAuth.currentUser?.uid;
   const prompts = getPrompts();
   sel.innerHTML = '<option value="">Standaard</option>';
-  prompts.forEach((p, i) => {
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = p.name;
-    sel.appendChild(opt);
-  });
-  // Herstel de eerder gekozen prompt voor deze taak
-  const assignmentId = document.getElementById('assignmentSelect').value;
-  const saved = getTaskPromptMap()[assignmentId];
+  const own = prompts.filter(p => p.userId === uid);
+  const pub = prompts.filter(p => p.userId !== uid && p.visibility === 'openbaar');
+  if (own.length) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Mijn prompts';
+    own.forEach((p, _) => {
+      const idx = prompts.indexOf(p);
+      const opt = document.createElement('option');
+      opt.value = idx; opt.textContent = p.name;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+  if (pub.length) {
+    const grp = document.createElement('optgroup');
+    grp.label = 'Gedeelde prompts';
+    pub.forEach(p => {
+      const idx = prompts.indexOf(p);
+      const opt = document.createElement('option');
+      opt.value = idx; opt.textContent = p.name;
+      grp.appendChild(opt);
+    });
+    sel.appendChild(grp);
+  }
+  const assignmentId = document.getElementById('assignmentSelect')?.value;
+  const saved = assignmentId ? getTaskPromptMap()[assignmentId] : undefined;
   if (saved !== undefined) sel.value = saved;
 }
 
