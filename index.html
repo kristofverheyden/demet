@@ -393,6 +393,16 @@
   .ai-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
 
   /* Feedback rich-text editor */
+  .mm-section { margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .mm-header { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: var(--surface2); font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; }
+  .mm-body { padding: 8px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .mm-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 3px 8px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; user-select: none; }
+  .mm-chip.checked.medal  { background: #e8f5e9; border-color: #2e7d32; color: #1b5e20; font-weight: 500; }
+  .mm-chip.checked.mission{ background: #fff3e0; border-color: #e65100; color: #bf360c; font-weight: 500; }
+  .mm-chip .mm-del { color: #bbb; font-size: 11px; margin-left: 2px; line-height: 1; }
+  .mm-chip .mm-del:hover { color: #b71c1c; }
+  .mm-add { font-size: 12px; color: var(--accent); cursor: pointer; padding: 3px 6px; border-radius: 8px; border: 1px dashed var(--accent); background: none; }
+  .mm-add:hover { background: var(--accent-light); }
   .feedback-toolbar { display: flex; gap: 4px; margin-bottom: 6px; }
   .fmt-btn {
     width: 30px; height: 30px; border: 1px solid var(--border);
@@ -744,6 +754,8 @@ async function fetchAllPages(baseUrl, itemsKey) {
 let students = [];
 let studentData = [];
 let currentStudentIndex = null;
+let feedbackCategories   = { medals: [], missions: [] };
+let currentStudentChecks = { medals: new Set(), missions: new Set() };
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
@@ -1394,6 +1406,135 @@ function formatFeedback(command) {
   document.execCommand(command, false, null);
 }
 
+// ── Medals & Missions ────────────────────────────────────────────────────────
+
+function mmDocKey() {
+  const uid = fbAuth.currentUser?.uid || 'anon';
+  return `${uid}_${userPrefs.courseId}_${userPrefs.topicId || 'none'}`;
+}
+
+function mmStudentDocKey(userId) {
+  return `${mmDocKey()}_${userId}`;
+}
+
+async function loadFeedbackCategories() {
+  try {
+    const snap = await db.collection('feedbackCategories').doc(mmDocKey()).get();
+    if (snap.exists) {
+      const d = snap.data();
+      feedbackCategories = { medals: d.medals || [], missions: d.missions || [] };
+    } else {
+      feedbackCategories = { medals: [], missions: [] };
+    }
+  } catch(e) { feedbackCategories = { medals: [], missions: [] }; }
+}
+
+async function loadStudentChecks(userId) {
+  currentStudentChecks = { medals: new Set(), missions: new Set() };
+  if (!userId) return;
+  try {
+    const snap = await db.collection('feedbackChecks').doc(mmStudentDocKey(userId)).get();
+    if (snap.exists) {
+      const d = snap.data();
+      (d.medals   || []).forEach(m => currentStudentChecks.medals.add(m));
+      (d.missions || []).forEach(m => currentStudentChecks.missions.add(m));
+    }
+  } catch(e) {}
+}
+
+async function saveFeedbackCategories() {
+  try {
+    await db.collection('feedbackCategories').doc(mmDocKey()).set({
+      medals:   feedbackCategories.medals,
+      missions: feedbackCategories.missions
+    });
+  } catch(e) {}
+}
+
+async function saveStudentChecks(userId) {
+  if (!userId) return;
+  try {
+    await db.collection('feedbackChecks').doc(mmStudentDocKey(userId)).set({
+      medals:   [...currentStudentChecks.medals],
+      missions: [...currentStudentChecks.missions]
+    });
+  } catch(e) {}
+}
+
+function renderMedalsMissions() {
+  const container = document.getElementById('mmSection');
+  if (!container) return;
+  const userId = students[currentStudentIndex]?.userId;
+
+  function buildChips(type) {
+    const items = feedbackCategories[type];
+    const checked = currentStudentChecks[type];
+    if (!items.length) return '<span style="font-size:12px;color:#bbb">Nog geen items — voeg toe met +</span>';
+    return items.map((item, idx) => {
+      const isChecked = checked.has(item);
+      return `<span class="mm-chip ${isChecked ? 'checked ' + (type === 'medals' ? 'medal' : 'mission') : ''}"
+        onclick="toggleMM('${type}',${idx})">
+        ${isChecked ? '✓ ' : ''}${item}
+        <span class="mm-del" onclick="event.stopPropagation();removeMM('${type}',${idx})">✕</span>
+      </span>`;
+    }).join('');
+  }
+
+  container.innerHTML = `
+    <div class="mm-section">
+      <div class="mm-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'flex':'none'">
+        <span>🏅 Medals &amp; 🎯 Missions</span>
+        <span style="font-weight:400;color:var(--text-muted)">${currentStudentChecks.medals.size + currentStudentChecks.missions.size} aangevinkt ▾</span>
+      </div>
+      <div class="mm-body" style="flex-direction:column">
+        <div style="font-size:11px;font-weight:600;color:#2e7d32;margin-bottom:2px">🏅 Medals</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          ${buildChips('medals')}
+          <button class="mm-add" onclick="addMM('medals')">+ Toevoegen</button>
+        </div>
+        <div style="font-size:11px;font-weight:600;color:#e65100;margin-bottom:2px">🎯 Missions</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${buildChips('missions')}
+          <button class="mm-add" onclick="addMM('missions')">+ Toevoegen</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function toggleMM(type, idx) {
+  const item = feedbackCategories[type][idx];
+  if (!item) return;
+  if (currentStudentChecks[type].has(item)) {
+    currentStudentChecks[type].delete(item);
+  } else {
+    currentStudentChecks[type].add(item);
+  }
+  const userId = students[currentStudentIndex]?.userId;
+  saveStudentChecks(userId);
+  renderMedalsMissions();
+}
+
+async function addMM(type) {
+  const text = prompt(type === 'medals' ? 'Nieuwe medal:' : 'Nieuwe mission:');
+  if (!text || !text.trim()) return;
+  feedbackCategories[type].push(text.trim());
+  await saveFeedbackCategories();
+  renderMedalsMissions();
+}
+
+async function removeMM(type, idx) {
+  const item = feedbackCategories[type][idx];
+  if (!confirm(`"${item}" verwijderen uit de lijst?`)) return;
+  feedbackCategories[type].splice(idx, 1);
+  currentStudentChecks[type].delete(item);
+  await saveFeedbackCategories();
+  const userId = students[currentStudentIndex]?.userId;
+  saveStudentChecks(userId);
+  renderMedalsMissions();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function unlockFeedback() {
   const i = currentStudentIndex;
   if (i === null || !studentData[i]) return;
@@ -1437,6 +1578,7 @@ async function showStudent(index) {
     ${!d.sent ? `
     <button class="btn-mic" id="micBtn" onclick="toggleSpeech()" style="margin-bottom:8px">🎤 Inspreken</button>
     <textarea id="spokenInput" placeholder="Ingesproken tekst verschijnt hier — ook manueel te bewerken..." style="min-height:60px;margin-bottom:8px">${spokenTranscript}</textarea>
+    <div id="mmSection"></div>
     <div class="ai-row">
       <select id="promptSelect" style="flex:1" onchange="savePromptForTask()"></select>
       <button class="btn-ai" id="aiBtn" onclick="generateFeedback('${name}')" ${spokenTranscript ? '' : 'disabled'}>✨ Genereer</button>
@@ -1465,6 +1607,16 @@ async function showStudent(index) {
   }
   document.getElementById('sendStatus').className = 'status';
   setTimeout(() => { initTextareas(); initPromptSelect(); }, 0);
+
+  // Laad medals/missions voor dit vak+hoofdstuk en voor deze leerling
+  if (!d.sent) {
+    const userId = s.userId;
+    Promise.all([
+      feedbackCategories.medals.length + feedbackCategories.missions.length === 0
+        ? loadFeedbackCategories() : Promise.resolve(),
+      loadStudentChecks(userId)
+    ]).then(() => renderMedalsMissions());
+  }
 
   // Als de leerling al feedback heeft gekregen maar de tekst nog niet geladen is, haal die op uit Firestore
   if (d.sent && !d.note) {
@@ -1709,7 +1861,14 @@ Geen herhaling tussen Medals en Missions.`;
         model: 'claude-sonnet-4-6',
         max_tokens: 600,
         system: selectedPrompt || defaultSystemPrompt,
-        messages: [{ role: 'user', content: `Schrijf feedback voor leerling ${studentName} op basis van deze notities: "${text}"` }]
+        messages: [{ role: 'user', content: (() => {
+          const checkedMedals   = [...currentStudentChecks.medals];
+          const checkedMissions = [...currentStudentChecks.missions];
+          let extra = '';
+          if (checkedMedals.length)   extra += `\n\nVerzeker dat deze medals zeker aan bod komen: ${checkedMedals.join(', ')}.`;
+          if (checkedMissions.length) extra += `\n\nVerzeker dat deze missions zeker aan bod komen: ${checkedMissions.join(', ')}.`;
+          return `Schrijf feedback voor leerling ${studentName} op basis van deze notities: "${text}"${extra}`;
+        })() }]
       })
     });
     if (!res.ok) {
