@@ -727,7 +727,9 @@ let accessToken = null;
 async function fetchAllPages(baseUrl, itemsKey) {
   const items = [];
   let pageToken = '';
+  let page = 0;
   do {
+    page++;
     const url = baseUrl + (baseUrl.includes('?') ? '&' : '?') +
       `pageSize=100${pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''}`;
     const res  = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -736,6 +738,7 @@ async function fetchAllPages(baseUrl, itemsKey) {
     (data[itemsKey] || []).forEach(i => items.push(i));
     pageToken = data.nextPageToken || '';
   } while (pageToken);
+  if (page > 1) console.log(`fetchAllPages(${itemsKey}): ${page} pagina's, ${items.length} items`);
   return items;
 }
 let students = [];
@@ -1252,9 +1255,8 @@ async function loadStudents() {
         const i   = students.indexOf(s);
         const opt = document.createElement('option');
         opt.value       = i;
-        opt.disabled    = true;
         opt.style.color = '#bbb';
-        opt.textContent = s.profile.name.fullName;
+        opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName + ' (afwezig)';
         sel.appendChild(opt);
       });
     }
@@ -2577,7 +2579,12 @@ async function loadSessionRoster() {
       userId: s.userId || ''
     })).filter(s => s.email);
     sessionRosterEmails = new Set(sessionRoster.map(s => s.email));
-  } catch(e) { /* silent */ }
+    console.log(`Sessie roster geladen: ${sessionRoster.length} leerlingen`);
+  } catch(e) {
+    console.warn('loadSessionRoster mislukt:', e);
+    sessionRoster = [];
+    sessionRosterEmails = new Set();
+  }
 }
 
 function toggleCalSearchCard() {
