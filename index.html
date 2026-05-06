@@ -1239,10 +1239,12 @@ async function loadStudents() {
     const absent  = students.filter(s => !getStudentOpSchool(s.profile.emailAddress || ''));
 
     present.forEach(s => {
-      const i   = students.indexOf(s);
-      const opt = document.createElement('option');
+      const i     = students.indexOf(s);
+      const coach = getCoachLabelForStudent(s.profile.emailAddress || '');
+      const opt   = document.createElement('option');
       opt.value = i;
-      opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName;
+      opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName +
+        (coach ? ` (${coach})` : '');
       sel.appendChild(opt);
     });
 
@@ -1252,11 +1254,13 @@ async function loadStudents() {
       sep.textContent = '── Voorlopig afwezig ──';
       sel.appendChild(sep);
       absent.forEach(s => {
-        const i   = students.indexOf(s);
-        const opt = document.createElement('option');
+        const i     = students.indexOf(s);
+        const coach = getCoachLabelForStudent(s.profile.emailAddress || '');
+        const opt   = document.createElement('option');
         opt.value       = i;
         opt.style.color = '#bbb';
-        opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName + ' (afwezig)';
+        opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName +
+          (coach ? ` (${coach})` : '') + ' · afwezig';
         sel.appendChild(opt);
       });
     }
