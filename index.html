@@ -1249,7 +1249,7 @@ async function loadStudents() {
     studentData = students.map(s => {
       const sub = subMap[s.userId];
       return {
-        note: '', sent: sentSet.has(s.userId), submissionId: sub?.id || null,
+        note: '', sent: sentSet.has(s.userId), taskStatus: null, submissionId: sub?.id || null,
         submissionLink: sub?.alternateLink || null
       };
     });
@@ -1263,13 +1263,11 @@ async function loadStudents() {
     const absent  = students.filter(s => !getStudentOpSchool(s.profile.emailAddress || ''));
 
     present.forEach(s => {
-      const i     = students.indexOf(s);
-      const coach = getCoachLabelForStudent(s.profile.emailAddress || '');
-      const opt   = document.createElement('option');
+      const i   = students.indexOf(s);
+      const opt = document.createElement('option');
       opt.value = i;
-      opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName +
-        (coach ? ` (${coach})` : '');
       sel.appendChild(opt);
+      updateStudentOptionText(i);
     });
 
     if (absent.length) {
@@ -1278,14 +1276,12 @@ async function loadStudents() {
       sep.textContent = '── Voorlopig afwezig ──';
       sel.appendChild(sep);
       absent.forEach(s => {
-        const i     = students.indexOf(s);
-        const coach = getCoachLabelForStudent(s.profile.emailAddress || '');
-        const opt   = document.createElement('option');
+        const i   = students.indexOf(s);
+        const opt = document.createElement('option');
         opt.value       = i;
         opt.style.color = '#bbb';
-        opt.textContent = (studentData[i].sent ? '✓ ' : '') + s.profile.name.fullName +
-          (coach ? ` (${coach})` : '') + ' · afwezig';
         sel.appendChild(opt);
+        updateStudentOptionText(i);
       });
     }
 
@@ -1621,6 +1617,31 @@ async function savePromotedItems() {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function updateStudentOptionText(i) {
+  const sel = document.getElementById('studentSelect');
+  if (!sel) return;
+  const opt = [...sel.options].find(o => parseInt(o.value) === i);
+  if (!opt) return;
+  const s = students[i];
+  const d = studentData[i];
+  const coach = getCoachLabelForStudent(s.profile.emailAddress || '');
+  const statusTag = d.taskStatus === 'ok' ? ' ✅' : d.taskStatus === 'remediation' ? ' ⚠️' : '';
+  const isAbsent = !getStudentOpSchool(s.profile.emailAddress || '');
+  opt.textContent = (d.sent ? '✓ ' : '') + s.profile.name.fullName +
+    (coach ? ` (${coach})` : '') + (isAbsent ? ' · afwezig' : '') + statusTag;
+}
+
+function setTaskStatus(i, status) {
+  if (!studentData[i]) return;
+  studentData[i].taskStatus = studentData[i].taskStatus === status ? null : status;
+  updateStudentOptionText(i);
+  const ts = studentData[i].taskStatus;
+  const okBtn  = document.getElementById('ts-ok');
+  const remBtn = document.getElementById('ts-rem');
+  if (okBtn)  okBtn.style.opacity  = ts === 'ok'          ? '1' : '0.45';
+  if (remBtn) remBtn.style.opacity = ts === 'remediation' ? '1' : '0.45';
+}
+
 function unlockFeedback() {
   const i = currentStudentIndex;
   if (i === null || !studentData[i]) return;
@@ -1660,6 +1681,14 @@ async function showStudent(index) {
       <div class="avatar">${initials}</div>
       <span class="student-name">${name}</span>
       ${d.sent ? '<span class="sent-badge" style="display:inline">Verstuurd ✓</span>' : ''}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button id="ts-ok" class="att-btn gemaakt${d.taskStatus === 'ok' ? ' active' : ''}"
+        onclick="setTaskStatus(${index}, 'ok')"
+        style="opacity:${d.taskStatus === 'ok' ? '1' : '0.45'};transition:opacity .15s">✅ In orde</button>
+      <button id="ts-rem" class="att-btn niet-gemaakt${d.taskStatus === 'remediation' ? ' active' : ''}"
+        onclick="setTaskStatus(${index}, 'remediation')"
+        style="opacity:${d.taskStatus === 'remediation' ? '1' : '0.45'};transition:opacity .15s">⚠️ Remediëring nodig</button>
     </div>
     ${!d.sent ? `
     <button class="btn-mic" id="micBtn" onclick="toggleSpeech()" style="margin-bottom:8px">🎤 Inspreken</button>
@@ -1956,7 +1985,10 @@ Geen herhaling tussen Medals en Missions.`;
             const it = feedbackCategories.missions.find(i => mmItemLabel(i) === lbl);
             return it && mmItemDetail(it) ? `${lbl} (${mmItemDetail(it)})` : lbl;
           });
+          const taskSt = studentData[currentStudentIndex]?.taskStatus;
           let extra = '';
+          if (taskSt === 'ok')          extra += '\n\nDe taak is in orde: benoem dit positief en geef aanmoediging.';
+          if (taskSt === 'remediation') extra += '\n\nDe leerling heeft remediëring nodig: geef duidelijk aan wat er verbeterd moet worden en wat de volgende stap is.';
           if (checkedMedals.length)   extra += `\n\nVerzeker dat deze medals zeker aan bod komen: ${checkedMedals.join(', ')}.`;
           if (checkedMissions.length) extra += `\n\nVerzeker dat deze missions zeker aan bod komen: ${checkedMissions.join(', ')}.`;
           return `Schrijf feedback voor leerling ${studentName} op basis van deze notities: "${text}"${extra}`;
@@ -2061,7 +2093,7 @@ async function sendCurrentFeedback() {
     }
 
     studentData[i].sent = true;
-    document.getElementById('studentSelect').options[i].textContent = students[i].profile.name.fullName + ' ✓';
+    updateStudentOptionText(i);
     const statusMsg = warnings.length
       ? `Feedback verstuurd ✓ (waarschuwingen: ${warnings.join('; ')})`
       : `Feedback verstuurd voor ${students[i].profile.name.fullName}.`;
