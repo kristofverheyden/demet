@@ -1826,7 +1826,14 @@ async function showStudent(index) {
     editBtn.style.display = d.sent ? '' : 'none';
   }
   document.getElementById('sendStatus').className = 'status';
+  document.getElementById('promoteSection').innerHTML = '';
   setTimeout(() => { initTextareas(); initPromptSelect(); }, 0);
+
+  // Toon bibliotheeksectie als er al feedback is
+  if (d.note) {
+    const { medals: pm, missions: px } = extractMMFromFeedback(d.note);
+    renderPromoteSection(pm, px);
+  }
 
   // Laad medals/missions voor dit vak+hoofdstuk en voor deze leerling
   if (!d.sent) {
@@ -1849,8 +1856,10 @@ async function showStudent(index) {
         const savedFeedback = snap.data().feedback || '';
         studentData[index].note = savedFeedback;
         const noteEl = document.getElementById('current-note');
-        if (noteEl) {
-          noteEl.innerHTML = savedFeedback;
+        if (noteEl) noteEl.innerHTML = savedFeedback;
+        if (savedFeedback) {
+          const { medals: pm, missions: px } = extractMMFromFeedback(savedFeedback);
+          renderPromoteSection(pm, px);
         }
       }
     } catch (e) {
