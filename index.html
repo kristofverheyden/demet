@@ -1259,35 +1259,40 @@ async function loadStudents() {
     const sel = document.getElementById('studentSelect');
     sel.innerHTML = '';
 
-    const present = students.filter(s =>  getStudentOpSchool(s.profile.emailAddress || ''));
-    const absent  = students.filter(s => !getStudentOpSchool(s.profile.emailAddress || ''));
+    const present     = students.filter(s =>  getStudentOpSchool(s.profile.emailAddress || ''));
+    const absent      = students.filter(s => !getStudentOpSchool(s.profile.emailAddress || ''));
+    const presentTodo = present.filter(s => !studentData[students.indexOf(s)].sent);
+    const presentDone = present.filter(s =>  studentData[students.indexOf(s)].sent);
 
-    present.forEach(s => {
+    function addOption(s, extraStyle) {
       const i   = students.indexOf(s);
       const opt = document.createElement('option');
       opt.value = i;
+      if (extraStyle) opt.style.cssText = extraStyle;
       sel.appendChild(opt);
       updateStudentOptionText(i);
-    });
-
-    if (absent.length) {
+    }
+    function addSeparator(label) {
       const sep = document.createElement('option');
       sep.disabled = true;
-      sep.textContent = '── Voorlopig afwezig ──';
+      sep.textContent = label;
       sel.appendChild(sep);
-      absent.forEach(s => {
-        const i   = students.indexOf(s);
-        const opt = document.createElement('option');
-        opt.value       = i;
-        opt.style.color = '#bbb';
-        sel.appendChild(opt);
-        updateStudentOptionText(i);
-      });
+    }
+
+    presentTodo.forEach(s => addOption(s));
+    if (presentDone.length) {
+      addSeparator('── Feedback verstuurd ──');
+      presentDone.forEach(s => addOption(s, 'color:#aaa'));
+    }
+    if (absent.length) {
+      addSeparator('── Voorlopig afwezig ──');
+      absent.forEach(s => addOption(s, 'color:#bbb'));
     }
 
     document.getElementById('selectStatus').className = 'status';
     section.style.display = 'block';
-    const firstIdx = present.length > 0 ? students.indexOf(present[0]) : 0;
+    const firstIdx = presentTodo.length > 0 ? students.indexOf(presentTodo[0])
+                   : present.length > 0     ? students.indexOf(present[0]) : 0;
     showStudent(firstIdx);
   } catch (e) {
     showStatus('selectStatus', 'Fout: ' + e.message, 'error');
