@@ -757,6 +757,7 @@ let studentData = [];
 let currentStudentIndex = null;
 let feedbackCategories   = { medals: [], missions: [] };
 let currentStudentChecks = { medals: new Set(), missions: new Set() };
+let pendingPromoteItems  = { medals: [], missions: [] };
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
@@ -1548,20 +1549,21 @@ function renderPromoteSection(checkedMedals, checkedMissions) {
   const el = document.getElementById('promoteSection');
   if (!el) return;
 
+  pendingPromoteItems = { medals: checkedMedals, missions: checkedMissions };
+
   function promoteRows(type, labels) {
     if (!labels.length) return '<p style="font-size:12px;color:#bbb;margin:4px 0">—</p>';
-    return labels.map(label => {
+    return labels.map((label, rowIdx) => {
       const existing = feedbackCategories[type].find(i => mmItemLabel(i) === label);
-      const shortVal = existing ? mmItemLabel(existing) : label;
+      const shortVal  = existing ? mmItemLabel(existing) : label;
       const detailVal = existing ? mmItemDetail(existing) : '';
-      const id = `prm_${type}_${label.replace(/\W/g,'_')}`;
       return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
-        <input type="checkbox" id="cb_${id}" ${existing ? 'checked' : ''} style="margin-top:3px;flex-shrink:0">
+        <input type="checkbox" id="prm_cb_${type}_${rowIdx}" checked style="margin-top:3px;flex-shrink:0">
         <div style="flex:1">
-          <input type="text" value="${shortVal.replace(/"/g,'&quot;')}" id="lbl_${id}"
+          <input type="text" value="${shortVal.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" id="prm_lbl_${type}_${rowIdx}"
             placeholder="Korte beschrijving (chip-label)"
             style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
-          <input type="text" value="${detailVal.replace(/"/g,'&quot;')}" id="det_${id}"
+          <input type="text" value="${detailVal.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" id="prm_det_${type}_${rowIdx}"
             placeholder="Volledige beschrijving (zichtbaar via ?)"
             style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:#666">
         </div>
@@ -1569,7 +1571,6 @@ function renderPromoteSection(checkedMedals, checkedMissions) {
     }).join('');
   }
 
-  const allChecked = { medals: checkedMedals, missions: checkedMissions };
   el.innerHTML = `
     <div style="margin-top:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
       <div style="background:var(--surface2);padding:8px 12px;font-size:13px;font-weight:600">
@@ -1581,21 +1582,20 @@ function renderPromoteSection(checkedMedals, checkedMissions) {
         <div style="font-size:11px;font-weight:600;color:#e65100;margin:8px 0 4px">🎯 Missions</div>
         ${promoteRows('missions', checkedMissions)}
         <button class="primary" style="margin-top:8px;font-size:12px;padding:5px 14px"
-          onclick="savePromotedItems(${JSON.stringify(allChecked).replace(/"/g,'&quot;')})">
+          onclick="savePromotedItems()">
           Opslaan in bibliotheek
         </button>
       </div>
     </div>`;
 }
 
-async function savePromotedItems(allChecked) {
+async function savePromotedItems() {
   ['medals','missions'].forEach(type => {
-    (allChecked[type] || []).forEach(label => {
-      const id = `prm_${type}_${label.replace(/\W/g,'_')}`;
-      const cb  = document.getElementById(`cb_${id}`);
+    (pendingPromoteItems[type] || []).forEach((label, rowIdx) => {
+      const cb = document.getElementById(`prm_cb_${type}_${rowIdx}`);
       if (!cb?.checked) return;
-      const newLabel  = document.getElementById(`lbl_${id}`)?.value.trim() || label;
-      const newDetail = document.getElementById(`det_${id}`)?.value.trim() || '';
+      const newLabel  = document.getElementById(`prm_lbl_${type}_${rowIdx}`)?.value.trim() || label;
+      const newDetail = document.getElementById(`prm_det_${type}_${rowIdx}`)?.value.trim() || '';
       const idx = feedbackCategories[type].findIndex(i => mmItemLabel(i) === label);
       if (idx >= 0) {
         feedbackCategories[type][idx] = { label: newLabel, detail: newDetail };
