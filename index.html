@@ -1061,6 +1061,7 @@ async function confirmSetup() {
   const courseName = document.getElementById('setupCourseSelect').selectedOptions[0].textContent;
   const topicName = document.getElementById('setupTopicSelect').selectedOptions[0].textContent;
   userPrefs = { ...userPrefs, courseId, courseName, topicId, topicName };
+  feedbackCategories = { medals: [], missions: [] }; // herlaad bibliotheek bij wijziging vak/onderwerp
   savePrefsLocally();
   showStatus('setupStatus', 'Opslaan...', 'success');
   await savePreferencesToFirestore();
@@ -1460,8 +1461,12 @@ async function loadStudentChecks(userId) {
 async function saveFeedbackCategories() {
   try {
     await db.collection('feedbackCategories').doc(mmDocKey()).set({
-      medals:   feedbackCategories.medals,
-      missions: feedbackCategories.missions
+      courseId:   userPrefs.courseId,
+      courseName: userPrefs.courseName,
+      topicId:    userPrefs.topicId,
+      topicName:  userPrefs.topicName,
+      medals:     feedbackCategories.medals,
+      missions:   feedbackCategories.missions
     });
   } catch(e) {}
 }
@@ -1585,13 +1590,17 @@ function extractMMFromFeedback(html) {
 }
 
 function shortLabelFrom(detail) {
-  const words = detail.split(/\s+/);
-  let label = '';
-  for (const w of words) {
-    if (label.length + w.length > 32) break;
-    label += (label ? ' ' : '') + w;
-  }
-  return label.replace(/[.,:;!?]+$/, '');
+  // Voor "Deel X – Y: ..." patroon: gebruik "Deel X – Y" als label
+  const deelMatch = detail.match(/^(Deel\s+\d+\s*[–\-]\s*[^:]+):/i);
+  if (deelMatch) return deelMatch[1].trim();
+
+  // Strip persoonlijk voornaamwoord + werkwoord aan het begin
+  const text = detail
+    .replace(/^(je|jij|u)\s+(hebt|bent|wist|kunt|mag|moet|kan)\s+(de\s+|het\s+|een\s+)?/i, '')
+    .replace(/^(het\s+is\s+|de\s+|het\s+|een\s+)/i, '');
+
+  // Eerste 3 woorden
+  return text.split(/\s+/).slice(0, 3).join(' ').replace(/[.,:;!?]+$/, '');
 }
 
 // parsedMedals / parsedMissions: string[] (volledige bullet-tekst uit de feedback)
