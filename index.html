@@ -1590,9 +1590,19 @@ function extractMMFromFeedback(html) {
 }
 
 function shortLabelFrom(detail) {
-  // Voor "Deel X – Y: ..." patroon: gebruik "Deel X – Y" als label
-  const deelMatch = detail.match(/^(Deel\s+\d+\s*[–\-]\s*[^:]+):/i);
-  if (deelMatch) return deelMatch[1].trim();
+  // "Deel X, vraag Y: ..." of "Deel X – Y: ..." of "Deel X: ..."
+  const deelMatch = detail.match(/^(Deel\s+\d+(?:\s*[,–\-]\s*[^:]+)?):\s*/i);
+  if (deelMatch) {
+    const prefix = deelMatch[1].trim();
+    if (/^Deel\s+\d+$/i.test(prefix)) {
+      // Alleen "Deel X:" — voeg eerste 2 inhoudswoorden toe
+      const rest = detail.slice(deelMatch[0].length)
+        .replace(/^(de\s+|het\s+|een\s+)/i, '');
+      const words = rest.split(/\s+/).slice(0, 2).join(' ').replace(/[.,:;!?]+$/, '');
+      return `${prefix}: ${words}`;
+    }
+    return prefix; // "Deel 2, vraag 4" of "Deel 1 – Vraag 2"
+  }
 
   // Strip persoonlijk voornaamwoord + werkwoord aan het begin
   const text = detail
