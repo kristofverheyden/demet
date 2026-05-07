@@ -1557,28 +1557,71 @@ async function removeMM(type, idx) {
   renderMedalsMissions();
 }
 
-function renderPromoteSection(checkedMedals, checkedMissions) {
+function extractMMFromFeedback(html) {
+  // Normalize HTML: <li> → bullet prefix, <br>/<</li> → newline
+  const normalized = html
+    .replace(/<li>/gi, '• ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = normalized;
+  const text = tmp.textContent;
+
+  const result = { medals: [], missions: [] };
+  let section = null;
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^medals?:?$/i.test(line))   { section = 'medals';   continue; }
+    if (/^missions?:?$/i.test(line)) { section = 'missions'; continue; }
+    if (section && line.startsWith('•')) {
+      const detail = line.replace(/^•\s*/, '').trim();
+      if (detail) result[section].push(detail);
+    } else if (section && line) {
+      section = null; // nieuwe sectie-header reset
+    }
+  }
+  return result;
+}
+
+function shortLabelFrom(detail) {
+  const words = detail.split(/\s+/);
+  let label = '';
+  for (const w of words) {
+    if (label.length + w.length > 32) break;
+    label += (label ? ' ' : '') + w;
+  }
+  return label.replace(/[.,:;!?]+$/, '');
+}
+
+// parsedMedals / parsedMissions: string[] (volledige bullet-tekst uit de feedback)
+function renderPromoteSection(parsedMedals, parsedMissions) {
   const el = document.getElementById('promoteSection');
   if (!el) return;
 
-  pendingPromoteItems = { medals: checkedMedals, missions: checkedMissions };
-  promoteNewRowCount  = { medals: 0, missions: 0 };
+  // Sla op als { detail } objecten; short label wordt auto-gegenereerd als startwaarde
+  pendingPromoteItems = {
+    medals:   parsedMedals.map(d => ({ detail: d })),
+    missions: parsedMissions.map(d => ({ detail: d }))
+  };
+  promoteNewRowCount = { medals: 0, missions: 0 };
 
-  function existingRows(type, labels) {
-    if (!labels.length) return '';
-    return labels.map((label, rowIdx) => {
-      const existing  = feedbackCategories[type].find(i => mmItemLabel(i) === label);
-      const shortVal  = existing ? mmItemLabel(existing) : label;
-      const detailVal = existing ? mmItemDetail(existing) : '';
+  function itemRows(type, details) {
+    if (!details.length) return '';
+    return details.map((detail, rowIdx) => {
+      // Zoek bestaand item op basis van volledige beschrijving
+      const existing = feedbackCategories[type].find(i => mmItemDetail(i) === detail);
+      const shortVal  = existing ? mmItemLabel(existing) : shortLabelFrom(detail);
+      const esc = s => s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
         <input type="checkbox" id="prm_cb_${type}_${rowIdx}" checked style="margin-top:3px;flex-shrink:0">
         <div style="flex:1">
-          <input type="text" value="${shortVal.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" id="prm_lbl_${type}_${rowIdx}"
+          <input type="text" value="${esc(shortVal)}" id="prm_lbl_${type}_${rowIdx}"
             placeholder="Korte beschrijving (chip-label)"
             style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
-          <input type="text" value="${detailVal.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" id="prm_det_${type}_${rowIdx}"
+          <input type="text" value="${esc(detail)}" id="prm_det_${type}_${rowIdx}"
             placeholder="Volledige beschrijving (zichtbaar via ?)"
-            style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:#666">
+            style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:#555">
         </div>
       </div>`;
     }).join('');
@@ -1589,12 +1632,15 @@ function renderPromoteSection(checkedMedals, checkedMissions) {
       <div style="background:var(--surface2);padding:8px 12px;font-size:13px;font-weight:600">
         📚 Toevoegen aan bibliotheek?
       </div>
-      <div style="padding:10px 12px">
+      <div style="padding:10px 12px;font-size:12px;color:var(--text-muted);margin-bottom:8px">
+        Pas de korte beschrijving aan (= chiplabel bij nieuwe leerlingen). De volledige tekst verschijnt via het vraagteken.
+      </div>
+      <div style="padding:0 12px 10px">
         <div style="font-size:11px;font-weight:600;color:#2e7d32;margin-bottom:6px">🏅 Medals</div>
-        <div id="prm-medals-rows">${existingRows('medals', checkedMedals)}</div>
+        <div id="prm-medals-rows">${itemRows('medals', parsedMedals)}</div>
         <button class="mm-add" onclick="addNewPromoteRow('medals')" style="margin-bottom:12px">+ Nieuwe medal toevoegen</button>
         <div style="font-size:11px;font-weight:600;color:#e65100;margin-bottom:6px">🎯 Missions</div>
-        <div id="prm-missions-rows">${existingRows('missions', checkedMissions)}</div>
+        <div id="prm-missions-rows">${itemRows('missions', parsedMissions)}</div>
         <button class="mm-add" onclick="addNewPromoteRow('missions')" style="margin-bottom:12px">+ Nieuwe mission toevoegen</button>
         <button class="primary" style="font-size:12px;padding:5px 14px" onclick="savePromotedItems()">
           Opslaan in bibliotheek
@@ -1625,13 +1671,15 @@ function addNewPromoteRow(type) {
 
 async function savePromotedItems() {
   ['medals','missions'].forEach(type => {
-    // Bestaande aangevinkte items bijwerken of toevoegen
-    (pendingPromoteItems[type] || []).forEach((label, rowIdx) => {
+    // Items uit de feedback (parsed)
+    (pendingPromoteItems[type] || []).forEach((item, rowIdx) => {
       const cb = document.getElementById(`prm_cb_${type}_${rowIdx}`);
       if (!cb?.checked) return;
-      const newLabel  = document.getElementById(`prm_lbl_${type}_${rowIdx}`)?.value.trim() || label;
-      const newDetail = document.getElementById(`prm_det_${type}_${rowIdx}`)?.value.trim() || '';
-      const idx = feedbackCategories[type].findIndex(i => mmItemLabel(i) === label);
+      const newLabel  = document.getElementById(`prm_lbl_${type}_${rowIdx}`)?.value.trim();
+      const newDetail = document.getElementById(`prm_det_${type}_${rowIdx}`)?.value.trim() || item.detail || '';
+      if (!newLabel) return;
+      // Update bestaand item (op detail match) of voeg toe
+      const idx = feedbackCategories[type].findIndex(i => mmItemDetail(i) === item.detail);
       if (idx >= 0) {
         feedbackCategories[type][idx] = { label: newLabel, detail: newDetail };
       } else {
@@ -2136,11 +2184,10 @@ async function sendCurrentFeedback() {
       ? `Feedback verstuurd ✓ (waarschuwingen: ${warnings.join('; ')})`
       : `Feedback verstuurd voor ${students[i].profile.name.fullName}.`;
     showStatus('sendStatus', statusMsg, 'success');
-    // Capture checks vóór showStudent die currentStudentChecks reset
-    const checkedM = [...currentStudentChecks.medals];
-    const checkedX = [...currentStudentChecks.missions];
+    // Extraheer medals & missions uit de feedbacktekst
+    const { medals: parsedM, missions: parsedX } = extractMMFromFeedback(d.note || '');
     showStudent(i);
-    renderPromoteSection(checkedM, checkedX);
+    renderPromoteSection(parsedM, parsedX);
     // Kopieer feedback en open inlevering in Classroom
     copyFeedback();
     const subLink = studentData[i].submissionLink;
