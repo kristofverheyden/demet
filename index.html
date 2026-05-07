@@ -1618,7 +1618,6 @@ function renderPromoteSection(parsedMedals, parsedMissions) {
   const el = document.getElementById('promoteSection');
   if (!el) return;
 
-  // Sla op als { detail } objecten; short label wordt auto-gegenereerd als startwaarde
   pendingPromoteItems = {
     medals:   parsedMedals.map(d => ({ detail: d })),
     missions: parsedMissions.map(d => ({ detail: d }))
@@ -1628,16 +1627,19 @@ function renderPromoteSection(parsedMedals, parsedMissions) {
   function itemRows(type, details) {
     if (!details.length) return '';
     return details.map((detail, rowIdx) => {
-      // Zoek bestaand item op basis van volledige beschrijving
-      const existing = feedbackCategories[type].find(i => mmItemDetail(i) === detail);
+      const existing  = feedbackCategories[type].find(i => mmItemDetail(i) === detail);
       const shortVal  = existing ? mmItemLabel(existing) : shortLabelFrom(detail);
+      const inLib     = !!existing;
       const esc = s => s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
-        <input type="checkbox" id="prm_cb_${type}_${rowIdx}" checked style="margin-top:3px;flex-shrink:0">
+        <input type="checkbox" id="prm_cb_${type}_${rowIdx}" style="margin-top:3px;flex-shrink:0">
         <div style="flex:1">
-          <input type="text" value="${esc(shortVal)}" id="prm_lbl_${type}_${rowIdx}"
-            placeholder="Korte beschrijving (chip-label)"
-            style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <input type="text" value="${esc(shortVal)}" id="prm_lbl_${type}_${rowIdx}"
+              placeholder="Korte beschrijving (chip-label)"
+              style="flex:1;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px">
+            ${inLib ? '<span style="font-size:10px;background:#e8f5e9;color:#2e7d32;padding:1px 6px;border-radius:10px;white-space:nowrap">✓ al in bibliotheek</span>' : ''}
+          </div>
           <input type="text" value="${esc(detail)}" id="prm_det_${type}_${rowIdx}"
             placeholder="Volledige beschrijving (zichtbaar via ?)"
             style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:#555">
@@ -1666,6 +1668,44 @@ function renderPromoteSection(parsedMedals, parsedMissions) {
         </button>
       </div>
     </div>`;
+
+  // Genereer betere korte labels via AI (op de achtergrond)
+  generatePromoteLabels(parsedMedals, parsedMissions);
+}
+
+async function generatePromoteLabels(medals, missions) {
+  if (!medals.length && !missions.length) return;
+  const lines = [
+    ...medals.map((d, i) => `M${i}: ${d}`),
+    ...missions.map((d, i) => `X${i}: ${d}`)
+  ];
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        system: 'Geef voor elke zin een kernachtige Nederlandse beschrijving van 2-4 woorden (geen persoonlijk voornaamwoord, geen werkwoord aan het begin, geen punt aan het einde). Antwoord ENKEL met de ID gevolgd door een dubbele punt en de beschrijving, één per lijn.',
+        messages: [{ role: 'user', content: lines.join('\n') }]
+      })
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    (data.content[0]?.text || '').split('\n').forEach(line => {
+      const m = line.match(/^([MX]\d+):\s*(.+)/);
+      if (!m) return;
+      const type = m[1][0] === 'M' ? 'medals' : 'missions';
+      const idx  = parseInt(m[1].slice(1));
+      const el   = document.getElementById(`prm_lbl_${type}_${idx}`);
+      if (el) el.value = m[2].trim();
+    });
+  } catch (e) { /* stil falen is OK, heuristisch label blijft staan */ }
 }
 
 function addNewPromoteRow(type) {
