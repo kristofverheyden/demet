@@ -758,6 +758,7 @@ let currentStudentIndex = null;
 let feedbackCategories   = { medals: [], missions: [] };
 let currentStudentChecks = { medals: new Set(), missions: new Set() };
 let pendingPromoteItems  = { medals: [], missions: [] };
+let promoteNewRowCount   = { medals: 0, missions: 0 };
 let userPrefs = { courseId: '', courseName: '', topicId: '', topicName: '' };
 let allCourses = [];
 let cachedPrompts = [];
@@ -1561,11 +1562,12 @@ function renderPromoteSection(checkedMedals, checkedMissions) {
   if (!el) return;
 
   pendingPromoteItems = { medals: checkedMedals, missions: checkedMissions };
+  promoteNewRowCount  = { medals: 0, missions: 0 };
 
-  function promoteRows(type, labels) {
-    if (!labels.length) return '<p style="font-size:12px;color:#bbb;margin:4px 0">—</p>';
+  function existingRows(type, labels) {
+    if (!labels.length) return '';
     return labels.map((label, rowIdx) => {
-      const existing = feedbackCategories[type].find(i => mmItemLabel(i) === label);
+      const existing  = feedbackCategories[type].find(i => mmItemLabel(i) === label);
       const shortVal  = existing ? mmItemLabel(existing) : label;
       const detailVal = existing ? mmItemDetail(existing) : '';
       return `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
@@ -1588,20 +1590,42 @@ function renderPromoteSection(checkedMedals, checkedMissions) {
         📚 Toevoegen aan bibliotheek?
       </div>
       <div style="padding:10px 12px">
-        <div style="font-size:11px;font-weight:600;color:#2e7d32;margin-bottom:4px">🏅 Medals</div>
-        ${promoteRows('medals', checkedMedals)}
-        <div style="font-size:11px;font-weight:600;color:#e65100;margin:8px 0 4px">🎯 Missions</div>
-        ${promoteRows('missions', checkedMissions)}
-        <button class="primary" style="margin-top:8px;font-size:12px;padding:5px 14px"
-          onclick="savePromotedItems()">
+        <div style="font-size:11px;font-weight:600;color:#2e7d32;margin-bottom:6px">🏅 Medals</div>
+        <div id="prm-medals-rows">${existingRows('medals', checkedMedals)}</div>
+        <button class="mm-add" onclick="addNewPromoteRow('medals')" style="margin-bottom:12px">+ Nieuwe medal toevoegen</button>
+        <div style="font-size:11px;font-weight:600;color:#e65100;margin-bottom:6px">🎯 Missions</div>
+        <div id="prm-missions-rows">${existingRows('missions', checkedMissions)}</div>
+        <button class="mm-add" onclick="addNewPromoteRow('missions')" style="margin-bottom:12px">+ Nieuwe mission toevoegen</button>
+        <button class="primary" style="font-size:12px;padding:5px 14px" onclick="savePromotedItems()">
           Opslaan in bibliotheek
         </button>
       </div>
     </div>`;
 }
 
+function addNewPromoteRow(type) {
+  const container = document.getElementById(`prm-${type}-rows`);
+  if (!container) return;
+  const idx = promoteNewRowCount[type]++;
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;align-items:flex-start;gap:8px;margin-bottom:8px';
+  div.innerHTML = `
+    <input type="checkbox" id="prm_new_cb_${type}_${idx}" checked style="margin-top:3px;flex-shrink:0">
+    <div style="flex:1">
+      <input type="text" id="prm_new_lbl_${type}_${idx}"
+        placeholder="Korte beschrijving (chip-label)"
+        style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
+      <input type="text" id="prm_new_det_${type}_${idx}"
+        placeholder="Volledige beschrijving (zichtbaar via ?)"
+        style="width:100%;font-size:12px;padding:3px 6px;border:1px solid var(--border);border-radius:4px;color:#666">
+    </div>`;
+  container.appendChild(div);
+  document.getElementById(`prm_new_lbl_${type}_${idx}`)?.focus();
+}
+
 async function savePromotedItems() {
   ['medals','missions'].forEach(type => {
+    // Bestaande aangevinkte items bijwerken of toevoegen
     (pendingPromoteItems[type] || []).forEach((label, rowIdx) => {
       const cb = document.getElementById(`prm_cb_${type}_${rowIdx}`);
       if (!cb?.checked) return;
@@ -1614,6 +1638,15 @@ async function savePromotedItems() {
         feedbackCategories[type].push({ label: newLabel, detail: newDetail });
       }
     });
+    // Nieuwe items toevoegen
+    for (let i = 0; i < promoteNewRowCount[type]; i++) {
+      const cb = document.getElementById(`prm_new_cb_${type}_${i}`);
+      if (!cb?.checked) continue;
+      const newLabel = document.getElementById(`prm_new_lbl_${type}_${i}`)?.value.trim();
+      if (!newLabel) continue;
+      const newDetail = document.getElementById(`prm_new_det_${type}_${i}`)?.value.trim() || '';
+      feedbackCategories[type].push({ label: newLabel, detail: newDetail });
+    }
   });
   await saveFeedbackCategories();
   document.getElementById('promoteSection').innerHTML =
