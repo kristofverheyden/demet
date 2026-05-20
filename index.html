@@ -2128,7 +2128,7 @@ Geen herhaling tussen Medals en Missions.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 600,
+        max_tokens: 2048,
         system: selectedPrompt || defaultSystemPrompt,
         messages: [{ role: 'user', content: (() => {
           const checkedMedals   = [...currentStudentChecks.medals].map(lbl => {
